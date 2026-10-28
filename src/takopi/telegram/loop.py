@@ -60,6 +60,7 @@ from .commands.handlers import (
 )
 from .commands.parse import is_cancel_command
 from .commands.reply import make_reply
+from .commands.help import handle_help
 from .commands.sessions import (
     CALLBACK_PREFIX,
     list_sessions,
@@ -213,6 +214,9 @@ def _dispatch_builtin_command(
     scope_chat_ids = ctx.scope_chat_ids
     reply = ctx.reply
     task_group = ctx.task_group
+    if command_id == "help":
+        task_group.start_soon(handle_help, cfg, msg)
+        return True
     if command_id == "projects":
         task_group.start_soon(show_projects, cfg, msg)
         return True

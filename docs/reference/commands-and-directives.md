@@ -34,6 +34,7 @@ This line is parsed from replies and takes precedence over new directives.
 
 | Command | Description |
 |---------|-------------|
+| `/help` | Show the Portuguese command guide, examples, and current engine/project shortcuts. Replies in the same topic without starting an agent. |
 | `/cancel` | Reply to the progress message to stop the current run. |
 | `/agent` | Show/set the default engine for the current scope. |
 | `/model` | Show/set the model override for the current scope. |

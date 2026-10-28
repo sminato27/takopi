@@ -23,8 +23,10 @@ def build_bot_commands(
     include_file: bool = True,
     include_topics: bool = False,
 ) -> list[dict[str, str]]:
-    commands: list[dict[str, str]] = []
-    seen: set[str] = set()
+    commands: list[dict[str, str]] = [
+        {"command": "help", "description": "ajuda e exemplos de todos os comandos"}
+    ]
+    seen: set[str] = {"help"}
     for engine_id in runtime.available_engine_ids():
         cmd = engine_id.lower()
         if cmd in seen:

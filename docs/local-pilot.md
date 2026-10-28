@@ -47,6 +47,7 @@ Só habilite o início automático depois de validar o piloto: `systemctl --user
 
 ## Uso
 
+- `/help`: mostra o guia em português de todos os comandos, com exemplos e os atalhos dos projetos cadastrados. Responde no mesmo chat/tópico, sem executar um agente, e informa recursos desativados.
 - `/new`: escolhe Codex ou Claude por botões.
 - `/new codex` ou `/new claude`: escolhe o projeto por botões.
 - `/new claude projeto nome da conversa`: cria diretamente um tópico independente.

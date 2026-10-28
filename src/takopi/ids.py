@@ -9,6 +9,7 @@ RESERVED_CLI_COMMANDS = frozenset({"config", "doctor", "init", "plugins"})
 RESERVED_CHAT_COMMANDS = frozenset(
     {
         "cancel",
+        "help",
         "stop",
         "sessions",
         "resume",
