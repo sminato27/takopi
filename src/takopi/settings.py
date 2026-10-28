@@ -68,6 +68,7 @@ class TelegramTopicsSettings(BaseModel):
 
     enabled: bool = False
     session_topics: bool = False
+    import_native_sessions: bool = False
     scope: Literal["auto", "main", "projects", "all"] = "auto"
 
 

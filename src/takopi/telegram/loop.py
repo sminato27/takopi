@@ -60,7 +60,12 @@ from .commands.handlers import (
 )
 from .commands.parse import is_cancel_command
 from .commands.reply import make_reply
-from .commands.sessions import CALLBACK_PREFIX, list_sessions, show_projects
+from .commands.sessions import (
+    CALLBACK_PREFIX,
+    list_sessions,
+    resume_native,
+    show_projects,
+)
 from .context import _merge_topic_context, _usage_ctx_set, _usage_topic
 from .topics import (
     _maybe_rename_topic,
@@ -213,6 +218,9 @@ def _dispatch_builtin_command(
         return True
     if command_id == "sessions" and topic_store is not None:
         task_group.start_soon(list_sessions, cfg, msg, args_text, topic_store)
+        return True
+    if command_id == "resume" and topic_store is not None:
+        task_group.start_soon(resume_native, cfg, msg, args_text, topic_store)
         return True
     if command_id == "file":
         if not cfg.files.enabled:

@@ -172,3 +172,68 @@ async def test_stop_without_reply_cancels_only_current_topic(session_setup):
     await handle_cancel(cfg, replace(msg, text="/stop", thread_id=101), tasks)
     assert current.cancel_requested.is_set()
     assert not other.cancel_requested.is_set()
+
+
+@pytest.mark.anyio
+async def test_native_history_lists_and_opens_once_without_launching_agent(
+    session_setup, monkeypatch, tmp_path
+):
+    from takopi.native_sessions import NativeSession
+    from takopi.telegram.commands.sessions import resume_native
+
+    cfg, msg, store, transport, bot = session_setup
+    cfg = replace(
+        cfg, topics=cfg.topics.model_copy(update={"import_native_sessions": True})
+    )
+    source = tmp_path / "native.jsonl"
+    source.write_text("{}")
+    native = NativeSession("claude", "native-id", tmp_path, source, "saved history", 1)
+    monkeypatch.setattr(
+        "takopi.telegram.commands.sessions.native_sessions", lambda: [native]
+    )
+    monkeypatch.setattr(
+        "takopi.telegram.commands.sessions.native_directory_busy", lambda _: False
+    )
+    monkeypatch.setattr("shutil.which", lambda _: "/bin/echo")
+    await list_sessions(cfg, msg, "claude", store)
+    assert "/resume claude native-id" in transport.send_calls[-1]["message"].text
+    await resume_native(cfg, msg, "claude native-id", store)
+    assert (await store.get_thread(msg.chat_id, 101)).sessions == {
+        "claude": "native-id"
+    }
+    await resume_native(cfg, replace(msg, message_id=2), "claude native-id", store)
+    assert len(bot.created) == 1
+    await list_sessions(cfg, msg, "claude", store)
+    assert "Sessões (1)" in transport.send_calls[-1]["message"].text
+
+
+@pytest.mark.anyio
+async def test_native_busy_or_missing_project_never_creates_topic(
+    session_setup, monkeypatch, tmp_path
+):
+    from takopi.native_sessions import NativeSession
+    from takopi.telegram.commands.sessions import resume_native
+
+    cfg, msg, store, transport, bot = session_setup
+    cfg = replace(
+        cfg, topics=cfg.topics.model_copy(update={"import_native_sessions": True})
+    )
+    source = tmp_path / "native.jsonl"
+    source.touch()
+    native = NativeSession("codex", "native-id", tmp_path, source, "history", 1)
+    monkeypatch.setattr(
+        "takopi.telegram.commands.sessions.native_sessions", lambda: [native]
+    )
+    monkeypatch.setattr(
+        "takopi.telegram.commands.sessions.native_directory_busy", lambda _: True
+    )
+    await resume_native(cfg, msg, "codex native-id", store)
+    assert not bot.created
+    assert "CLI ativo" in transport.send_calls[-1]["message"].text
+    monkeypatch.setattr(
+        "takopi.telegram.commands.sessions.native_sessions",
+        lambda: [replace(native, cwd=tmp_path / "missing")],
+    )
+    await resume_native(cfg, msg, "codex native-id", store)
+    assert not bot.created
+    assert "não está disponível" in transport.send_calls[-1]["message"].text

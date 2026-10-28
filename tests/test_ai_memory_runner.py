@@ -28,7 +28,8 @@ def managed_cli(tmp_path, monkeypatch):
         saved = root / (workstream + '.json')
         prompt = sys.stdin.read()
         if selector == '--new':
-            session = str(uuid.uuid4())
+            native_selector = '--resume' if engine == 'claude' else 'resume'
+            session = args[args.index(native_selector) + 1] if native_selector in args else str(uuid.uuid4())
         else:
             session = json.loads(saved.read_text())['session']
         payload = dict(args=args, cwd=os.getcwd(), session=session, prompt=prompt,
@@ -163,3 +164,39 @@ def test_incompatible_configuration_is_rejected(managed_cli):
         )
     with pytest.raises(ConfigError, match="true or false"):
         AiMemoryConfig.from_config({"ai_memory": "yes"}, Path("test.toml"))
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine", ["codex", "claude"])
+async def test_imported_native_session_is_adopted_then_resumed(
+    managed_cli, monkeypatch, engine
+):
+    from takopi.model import ResumeToken
+
+    monkeypatch.setattr("takopi.native_sessions.native_directory_busy", lambda _: False)
+    runner = runner_for(engine, managed_cli)
+    resume = ResumeToken(engine, "11111111-2222-4333-8444-555555555555")
+    marker = set_run_base_dir(managed_cli)
+    try:
+        with pytest.raises(ConfigError, match="no ai-memory binding"):
+            _ = [e async for e in runner.run("no", resume)]
+        runner.ai_memory.allow_import(engine, resume.value, managed_cli)
+        events = [e async for e in runner.run("imported", resume)]
+        assert events[-1].ok and events[-1].resume == resume
+        assert (
+            "--new"
+            in json.loads(next(managed_cli.glob("tg-*.json")).read_text())["args"]
+        )
+        events = [e async for e in runner_for(engine, managed_cli).run("again", resume)]
+        assert events[-1].ok and events[-1].resume == resume
+        assert (
+            "--workstream"
+            in json.loads(next(managed_cli.glob("tg-*.json")).read_text())["args"]
+        )
+        monkeypatch.setattr(
+            "takopi.native_sessions.native_directory_busy", lambda _: True
+        )
+        with pytest.raises(ConfigError, match="CLI ativo"):
+            _ = [e async for e in runner.run("must not execute", resume)]
+    finally:
+        reset_run_base_dir(marker)

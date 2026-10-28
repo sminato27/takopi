@@ -2,7 +2,7 @@
 
 Este checkout adapta o Takopi 0.23.4 (upstream e0123d4f9b2588bf45ec7250ad648c324e20ce20). A primeira etapa usa apenas o WSL Ubuntu-26.04. Nenhum executor remoto ou Agy foi configurado.
 
-Em 28/10/2026, o bot foi conectado ao grupo MyBots, com acesso restrito ao usuário identificado pelo `/setup`. Após os testes reais de ambos os agentes, o serviço ficou ativo e habilitado no systemd do usuário, com linger. Os projetos disponíveis são `teste`, `sminato`, `llamp`, `gpsmock`, `chessrush` e `takopi`. O WSL precisa estar em execução.
+Em 28/10/2026, o bot foi conectado ao grupo MyBots, com acesso restrito ao usuário identificado pelo `/setup`. Após os testes reais de ambos os agentes, o serviço ficou ativo e habilitado no systemd do usuário, com linger. Há 16 projetos cadastrados e 40 históricos locais no catálogo. O WSL precisa estar em execução.
 
 ## Instalação reproduzível
 
@@ -51,7 +51,8 @@ Só habilite o início automático depois de validar o piloto: `systemctl --user
 - `/new codex` ou `/new claude`: escolhe o projeto por botões.
 - `/new claude projeto nome da conversa`: cria diretamente um tópico independente.
 - `/projects`: lista os projetos cadastrados.
-- `/sessions`, `/sessions codex` ou `/sessions claude`: lista as conversas criadas neste bot com links. Usa `/sessions all 2` para a página seguinte.
+- `/sessions`, `/sessions codex` ou `/sessions claude`: lista as conversas do bot com links e os históricos locais ainda sem tópico. Use `/sessions all 2` para a página seguinte.
+- `/resume codex ID` ou `/resume claude ID`: abre um histórico local no seu projeto, em um tópico. Copie o comando mostrado por `/sessions`. Se já existe um tópico para o ID, retorna seu link. A primeira mensagem no tópico retoma o CLI através do ai-memory; listar e abrir um tópico não executa uma tarefa de modelo.
 - Escreva no tópico para iniciar/retomar a conversa. A primeira mensagem inicia o CLI; criar um tópico não consome uma chamada de modelo.
 - `/model set MODELO` e `/reasoning set NÍVEL`: usam os controles do Takopi para aquela conversa. Sem override, o CLI mantém os padrões do usuário.
 - `/ctx`: mostra projeto/contexto; `/agent` mostra o agente. Mantenha cada tópico associado ao projeto original.
@@ -63,13 +64,13 @@ O histórico fica salvo após reiniciar o bot. `/new` no modo deste piloto cria 
 
 Cada conversa nova recebe um workstream `tg-<uuid>`. O mapeamento entre ID nativo, projeto, diretório de configuração e workstream é persistido em `~/.takopi/ai_memory_sessions.sqlite3`. Na retomada o mesmo vínculo é obrigatório. Trocar o diretório/configuração da sessão falha explicitamente, sem criar outra conversa silenciosamente.
 
-O processo passa por `ai-memory run --require-server --no-autowire`. Codex usa `exec --json --yolo`; Claude usa `-p --output-format stream-json --verbose --permission-mode auto`, sem acrescentar as regras amplas de ferramentas que o Takopi original fornece. Prompts seguem por stdin. O resultado final só é entregue depois que o launcher termina, para considerar falhas de captura/finalização.
+O processo passa por `ai-memory run --require-server --no-autowire`. Codex usa `exec --json --yolo`; Claude usa `-p --output-format stream-json --verbose --permission-mode auto`, sem acrescentar as regras amplas de ferramentas que o Takopi original fornece. Prompts seguem por stdin. O resultado final só é entregue depois que o launcher termina, para considerar falhas de captura/finalização. A adoção explícita via `/resume` autoriza apenas aquele ID, diretório e configuração; a primeira execução cria o workstream com o seletor nativo de retomada, e as seguintes usam o vínculo salvo.
 
 Claude informa seu modo efetivo no evento inicial; o adaptador interrompe a execução se não for `auto`. Auto pode negar ações e pedir intervenção: o piloto não troca silenciosamente para bypass. O caminho não interativo não reproduz todos os diálogos da TUI, inclusive perguntas estruturadas. Essas situações devem aparecer como erro/solicitação na conversa e ser verificadas no teste de uso.
 
 ## Limites desta etapa
 
-- `/sessions` lista tópicos e conversas do bot, não importa sessões anteriores abertas nos terminais. Não há anexação a uma sessão de terminal que já esteja executando.
+- Com `topics.import_native_sessions = true`, `/sessions` inclui o índice e os rollouts do Codex e os históricos de `~/.claude/projects`. Não há anexação a um CLI que esteja executando no terminal: a adoção/retomada é bloqueada conservadoramente quando há um processo nativo no mesmo diretório. Encerre o CLI no terminal antes de alternar para o Telegram.
 - O envio da inicialização e o menu foram confirmados pela API real do Telegram. A validação de conversas iniciadas por mensagens do usuário no grupo é uma etapa separada dos testes locais.
 - O Takopi descarta mensagens acumuladas enquanto estava desligado ao iniciar. Isso evita executar tarefas antigas automaticamente; reenvie a tarefa desejada após o aviso de inicialização.
 - Áudio e transferência de arquivos ficam desativados no piloto. Regras/skills/MCPs continuam sendo os dos CLIs.
@@ -139,3 +140,33 @@ O inventário privado `~/.takopi/native-session-inventory.json` contém 20 hist�
 O cadastro atual de projetos e as duas sessões criadas pelo bot estão operacionais. A expansão para outras instalações e Agy permanece fora desta etapa.
 
 O desenvolvimento foi interrompido novamente quando a consulta indicou 9% restantes na janela de 5 horas e 52% na semanal. A varredura adicional de repositórios sob `projects`, `Desktop` e `Documents` não terminou; repetir essa busca na continuidade antes de afirmar que todos os projetos do disco foram encontrados. O cadastro concluído cobre os diretórios existentes identificados nos históricos locais e o Takopi. O inventário privado permite retomar a implementação da importação sem reler o conteúdo completo das conversas.
+
+## Continuação concluída após o pedido do usuário
+
+A varredura adicional terminou e o usuário pediu para continuar. Foram cadastrados todos os projetos de trabalho encontrados nos históricos deste WSL e nas árvores pesquisadas, incluindo os repositórios de Documents. Um repositório instalado dentro de `Documents/PowerShell/Modules/z/1.1.14` foi identificado como dependência e não cadastrado como projeto de trabalho. O catálogo final contém:
+
+| Alias | Diretório relativo a `/mnt/c/Users/SMinato` |
+| --- | --- |
+| sminato | raiz |
+| llamp | projects/llamp |
+| gpsmock | projects/gpsmock |
+| chessrush | desktop/ChessRush |
+| takopi | projects/takopi |
+| dashjob | Documents/Projetos/DashJob |
+| preenchedoria | Documents/Projetos/PreenchedorIA |
+| sistema_estoque | Documents/Projetos/Projeto-SistemaEstoque-Full-Stack |
+| yidle | Documents/Projetos/Yidle |
+| flstudio_mcp | Documents/Projetos/audio/flstudio-mcp |
+| portfolio | Documents/Projetos/sminato27-portfolio |
+| telegram_upload | Documents/Projetos/telegram-upload |
+| telegram_drive | Documents/Scripts/Telegram-Drive |
+| upload_assistant | Documents/Scripts/Upload-Assistant |
+| flutter | Documents/flutter |
+
+O projeto `teste` permanece em `~/.local/share/takopi-test-project`, totalizando 16 aliases. O bot confirmou o novo menu e `/resume` pela API real do Telegram depois de reiniciar, com serviço ativo e habilitado, sem reinicializações por falha.
+
+O catálogo nativo é atualizado a cada `/sessions`: 20 históricos do Codex e 20 do Claude na validação, sem duplicar os dois IDs já vinculados a tópicos. O histórico com diretório Docker desaparecido continua visível, com indicação de indisponibilidade, sem tentar mudar seu projeto. Históricos antigos criam tópicos sob demanda, evitando criar dezenas de tópicos durante o cadastro. Não foram alterados os bancos e arquivos de histórico dos CLIs para construir a listagem.
+
+Testes reais de adoção: dois históricos do projeto isolado, anteriores ao bot, foram retomados pelo adaptador com seus IDs originais. Ambos recuperaram o código memorizado e finalizaram com saída zero; evidências privadas em `~/.local/share/takopi-test-project/validation/import-results.json` e `import-validation.log`. Foram usados os CLIs reais e `ai-memory run`, sem repetir automaticamente tarefas antigas de projetos reais.
+
+A suíte completa passou com **619 testes**, cobertura **81,61%**. Um aviso de fechamento de conexão no fixture SQLite novo foi corrigido e os testes focados repetidos. Ruff e formatação passaram; Ty permanece sem erros, com cinco avisos preexistentes. A interação de `/resume` no Telegram usa o fluxo testado de criação de tópicos; os novos testes cobrem listagem, reutilização de tópico, recusa de diretório ausente/ocupado e adoção seguida de retomada. O próximo uso natural pode ser `/sessions claude`, seguido do `/resume` correspondente e de uma mensagem no tópico.

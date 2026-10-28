@@ -6,6 +6,14 @@ from typing import TYPE_CHECKING
 
 from ...config import ConfigError
 from ...context import RunContext
+from ...managed import AiMemoryConfig
+from ...model import ResumeToken
+from ...native_sessions import (
+    NativeSession,
+    native_directory_busy,
+    native_sessions,
+    same_directory,
+)
 from ...transport import RenderedMessage, SendOptions
 from ..files import split_command_args
 from ..topic_state import TopicStateStore
@@ -49,6 +57,7 @@ async def create_session(
     msg: TelegramIncomingMessage,
     args_text: str,
     store: TopicStateStore,
+    imported: NativeSession | None = None,
 ) -> None:
     reply = make_reply(cfg, msg)
     error = _topics_command_error(cfg, msg.chat_id)
@@ -102,7 +111,11 @@ async def create_session(
     title = f"{cfg.runtime.project_alias_for_key(project)} · {engine.title()} · {name}"[
         :128
     ]
-    creation_key = f"{msg.message_id}:{engine}:{project}"
+    creation_key = (
+        f"native:{engine}:{imported.session_id}"
+        if imported
+        else f"{msg.message_id}:{engine}:{project}"
+    )
     async with store.creation_lock:
         rows = await store.list_threads(msg.chat_id)
         existing = next((row for row in rows if row.creation_key == creation_key), None)
@@ -119,6 +132,10 @@ async def create_session(
             await store.create_session_topic(
                 msg.chat_id, thread_id, context, engine, title, creation_key
             )
+            if imported is not None:
+                await store.set_session_resume(
+                    msg.chat_id, thread_id, ResumeToken(engine, imported.session_id)
+                )
             await cfg.exec_cfg.transport.send(
                 channel_id=msg.chat_id,
                 message=RenderedMessage(
@@ -163,20 +180,117 @@ async def list_sessions(
         for r in await store.list_threads(msg.chat_id)
         if engine is None or engine == r.default_engine or engine in r.sessions
     ]
-    lines = [f"Sessões deste bot ({len(rows)}), página {page}:"]
-    for row in rows[(page - 1) * 10 : page * 10]:
+    entries = []
+    for row in rows:
         label = row.topic_title or f"Tópico {row.thread_id}"
         link = topic_link(msg.chat_id, row.thread_id)
         label = label.replace("[", "(").replace("]", ")")
         state = "histórico salvo" if row.sessions else "aguardando primeira tarefa"
-        lines.append(
+        entries.append(
             f"• [{label}]({link}) — {state}" if link else f"• {label} — {state}"
         )
-    if not rows:
+    if cfg.topics.import_native_sessions:
+        bound = {(key, value) for row in rows for key, value in row.sessions.items()}
+        for native in native_sessions():
+            if (engine and native.engine != engine) or (
+                native.engine,
+                native.session_id,
+            ) in bound:
+                continue
+            project = _project_for_native(cfg, native)
+            status = project or "diretório indisponível/não cadastrado"
+            label = (
+                " ".join(native.title.split())[:80].replace("[", "(").replace("]", ")")
+            )
+            entries.append(
+                f"• {native.engine} · {status} · {label}\n/resume {native.engine} {native.session_id}"
+            )
+    lines = [
+        f"Sessões ({len(entries)}), página {page}:",
+        *entries[(page - 1) * 10 : page * 10],
+    ]
+    if not entries:
         lines.append("Crie uma sessão com /new codex ou /new claude.")
-    if len(rows) > page * 10:
+    if len(entries) > page * 10:
         lines.append(f"Próxima página: /sessions {engine or 'all'} {page + 1}")
     await reply(text="\n".join(lines))
+
+
+def _project_for_native(cfg: TelegramBridgeConfig, native: NativeSession) -> str | None:
+    for alias in cfg.runtime.project_aliases():
+        path = cfg.runtime.resolve_run_cwd(RunContext(project=alias))
+        if path is not None and path.is_dir() and same_directory(path, native.cwd):
+            return alias
+    return None
+
+
+async def resume_native(
+    cfg: TelegramBridgeConfig,
+    msg: TelegramIncomingMessage,
+    arguments: str,
+    store: TopicStateStore,
+) -> None:
+    reply = make_reply(cfg, msg)
+    if (
+        _topics_command_error(cfg, msg.chat_id) is not None
+        or msg.chat_type != "supergroup"
+    ):
+        await reply(text="Use /resume no grupo com tópicos configurado.")
+        return
+    args = split_command_args(arguments)
+    if (
+        not cfg.topics.import_native_sessions
+        or len(args) != 2
+        or args[0] not in {"codex", "claude"}
+    ):
+        await reply(
+            text="Use /resume codex ID ou /resume claude ID, conforme /sessions."
+        )
+        return
+    for row in await store.list_threads(msg.chat_id):
+        if row.sessions.get(args[0]) == args[1]:
+            await reply(
+                text=f"Sessão já disponível: [abrir tópico]({topic_link(msg.chat_id, row.thread_id)})"
+            )
+            return
+    native = next(
+        (
+            r
+            for r in native_sessions()
+            if r.engine == args[0] and r.session_id == args[1]
+        ),
+        None,
+    )
+    if native is None:
+        await reply(text="Histórico local não encontrado. Consulte /sessions.")
+        return
+    project = _project_for_native(cfg, native)
+    if project is None or not native.source.is_file():
+        await reply(
+            text="O diretório ou arquivo deste histórico não está disponível. Nenhuma sessão foi alterada."
+        )
+        return
+    if native_directory_busy(native.cwd):
+        await reply(
+            text="Há um CLI ativo neste diretório. Encerre-o no terminal antes de retomar pelo Telegram."
+        )
+        return
+    config_path = cfg.runtime.config_path
+    if config_path is None:
+        await reply(text="Configuração local indisponível.")
+        return
+    managed = AiMemoryConfig.from_config({"ai_memory": True}, config_path)
+    assert managed is not None
+    cwd = cfg.runtime.resolve_run_cwd(RunContext(project=project))
+    assert cwd is not None
+    managed.allow_import(native.engine, native.session_id, cwd)
+    await create_session(
+        cfg,
+        msg,
+        f"{native.engine} {project} histórico {native.session_id[:8]}",
+        store,
+        native,
+    )
 
 
 async def show_projects(

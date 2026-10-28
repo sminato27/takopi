@@ -86,6 +86,7 @@ def build_bot_commands(
         for cmd, description in [
             ("topic", "create or bind a topic"),
             ("sessions", "listar sessões por agente"),
+            ("resume", "abrir histórico local em um tópico"),
             ("projects", "listar projetos disponíveis"),
             ("stop", "interromper tarefa"),
         ]:

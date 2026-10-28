@@ -124,7 +124,12 @@ def main() -> None:
                 "message_overflow": "split",
                 "show_resume_line": False,
                 "voice_transcription": False,
-                "topics": {"enabled": True, "scope": "main", "session_topics": True},
+                "topics": {
+                    "enabled": True,
+                    "scope": "main",
+                    "session_topics": True,
+                    "import_native_sessions": True,
+                },
                 "files": {"enabled": False},
             }
         },

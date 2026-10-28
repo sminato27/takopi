@@ -42,7 +42,22 @@ class AiMemoryConfig:
             "config_home TEXT NOT NULL, workstream TEXT NOT NULL, "
             "PRIMARY KEY(engine, native_id, cwd, config_home))"
         )
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS adoptions (engine TEXT, native_id TEXT, cwd TEXT, "
+            "config_home TEXT, PRIMARY KEY(engine,native_id,cwd,config_home))"
+        )
         return connection
+
+    def allow_import(self, engine: str, native_id: str, cwd: Path) -> None:
+        home_key = "CODEX_HOME" if engine == "codex" else "CLAUDE_CONFIG_DIR"
+        config_home = str(
+            Path(os.environ.get(home_key) or Path.home() / f".{engine}").resolve()
+        )
+        with closing(self.connect()) as connection, connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO adoptions VALUES (?,?,?,?)",
+                (engine, native_id, str(cwd.resolve()), config_home),
+            )
 
     def prepare(
         self,
@@ -68,11 +83,30 @@ class AiMemoryConfig:
                     (engine, resume.value, directory, config_home),
                 ).fetchone()
             if row is None:
-                raise ConfigError(
-                    "This session has no ai-memory binding for this project/configuration. "
-                    "Return to its original project or create a new session with /new."
-                )
-            workstream = row[0]
+                with closing(self.connect()) as connection:
+                    imported = connection.execute(
+                        "SELECT 1 FROM adoptions WHERE engine=? AND native_id=? AND cwd=? AND config_home=?",
+                        (engine, resume.value, directory, config_home),
+                    ).fetchone()
+                if imported is None:
+                    raise ConfigError(
+                        "This session has no ai-memory binding for this project/configuration. "
+                        "Return to its original project or create a new session with /new."
+                    )
+            else:
+                workstream = row[0]
+            with closing(self.connect()) as connection:
+                imported = connection.execute(
+                    "SELECT 1 FROM adoptions WHERE engine=? AND native_id=? AND cwd=? AND config_home=?",
+                    (engine, resume.value, directory, config_home),
+                ).fetchone()
+            if imported:
+                from .native_sessions import native_directory_busy
+
+                if native_directory_busy(Path(directory)):
+                    raise ConfigError(
+                        "Há um CLI ativo neste diretório. Encerre-o no terminal antes de retomar pelo Telegram."
+                    )
         selector = "--workstream" if workstream else "--new"
         workstream = workstream or f"tg-{uuid.uuid4().hex}"
         command = [
