@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -60,6 +60,7 @@ from .commands.handlers import (
 )
 from .commands.parse import is_cancel_command
 from .commands.reply import make_reply
+from .commands.sessions import CALLBACK_PREFIX, list_sessions, show_projects
 from .context import _merge_topic_context, _usage_ctx_set, _usage_topic
 from .topics import (
     _maybe_rename_topic,
@@ -207,6 +208,12 @@ def _dispatch_builtin_command(
     scope_chat_ids = ctx.scope_chat_ids
     reply = ctx.reply
     task_group = ctx.task_group
+    if command_id == "projects":
+        task_group.start_soon(show_projects, cfg, msg)
+        return True
+    if command_id == "sessions" and topic_store is not None:
+        task_group.start_soon(list_sessions, cfg, msg, args_text, topic_store)
+        return True
     if command_id == "file":
         if not cfg.files.enabled:
             handler = partial(
@@ -259,6 +266,7 @@ def _dispatch_builtin_command(
                 cfg,
                 msg,
                 topic_store,
+                args_text=args_text,
                 resolved_scope=resolved_scope,
                 scope_chat_ids=scope_chat_ids,
             )
@@ -1670,6 +1678,19 @@ async def run_main_loop(
                 args_text = classification.args_text
                 if command_id == "new":
                     forward_coalescer.cancel(forward_key)
+                    if cfg.topics.session_topics and state.topic_store is not None:
+                        tg.start_soon(
+                            partial(
+                                handle_new_command,
+                                cfg,
+                                msg,
+                                state.topic_store,
+                                args_text=args_text,
+                                resolved_scope=state.resolved_topics_scope,
+                                scope_chat_ids=state.topics_chat_ids,
+                            )
+                        )
+                        return
                     if state.topic_store is not None and topic_key is not None:
                         tg.start_soon(
                             partial(
@@ -1896,6 +1917,19 @@ async def run_main_loop(
                         oldest = state.seen_messages_order.popleft()
                         state.seen_message_keys.discard(oldest)
                 if isinstance(update, TelegramCallbackQuery):
+                    if update.data and update.data.startswith(CALLBACK_PREFIX):
+                        await cfg.bot.answer_callback_query(update.callback_query_id)
+                        if (
+                            cfg.topics.session_topics
+                            and update.chat_id in _allowed_chat_ids(cfg)
+                        ):
+                            message = replace(
+                                _callback_message(update),
+                                text="/new "
+                                + update.data.removeprefix(CALLBACK_PREFIX),
+                            )
+                            await route_message(message)
+                        return
                     if update.data == CANCEL_CALLBACK_DATA:
                         tg.start_soon(
                             handle_callback_cancel,

@@ -6,7 +6,7 @@ def is_cancel_command(text: str) -> bool:
     if not stripped:
         return False
     command = stripped.split(maxsplit=1)[0]
-    return command == "/cancel" or command.startswith("/cancel@")
+    return command.split("@", 1)[0] in {"/cancel", "/stop"}
 
 
 def _parse_slash_command(text: str) -> tuple[str | None, str]:

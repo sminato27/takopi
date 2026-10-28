@@ -18,6 +18,7 @@ from ..backends import EngineBackend, EngineConfig
 from ..config import ConfigError
 from ..events import EventFactory
 from ..logging import get_logger
+from ..managed import AiMemoryConfig
 from ..model import ActionPhase, EngineId, ResumeToken, TakopiEvent
 from ..runner import BaseRunner, JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from .run_options import get_run_options
@@ -492,6 +493,13 @@ class CodexRunner(ResumeTokenMixin, JsonlSubprocessRunner):
                         f"model_reasoning_effort={run_options.reasoning}",
                     ]
                 )
+        if self.ai_memory is not None:
+            # ai-memory recognizes `exec resume` only at the beginning of argv.
+            # Resume also has a narrower flag set than `exec`.
+            prefix = ["exec"]
+            if resume is not None:
+                prefix.extend(["resume", resume.value])
+            return [*prefix, *args, "--json", "--skip-git-repo-check", "--yolo", "-"]
         args.extend(
             [
                 "exec",
@@ -1363,6 +1371,11 @@ def build_runner(config: EngineConfig, config_path: Path) -> Runner:
     codex_cmd = "codex"
 
     mode_value = config.get("mode", "app_server")
+    ai_memory = AiMemoryConfig.from_config(config, config_path)
+    if ai_memory is not None and mode_value != "exec":
+        raise ConfigError(
+            "ai-memory requires codex.mode = 'exec'; app-server is not a managed session"
+        )
     if mode_value not in {"app_server", "exec"}:
         raise ConfigError(
             f"Invalid `codex.mode` in {config_path}; expected 'app_server' or 'exec'."
@@ -1398,7 +1411,9 @@ def build_runner(config: EngineConfig, config_path: Path) -> Runner:
         title = profile_value
 
     if mode_value == "exec":
-        return CodexRunner(codex_cmd=codex_cmd, extra_args=extra_args, title=title)
+        runner = CodexRunner(codex_cmd=codex_cmd, extra_args=extra_args, title=title)
+        runner.ai_memory = ai_memory
+        return runner
     return AppServerCodexRunner(codex_cmd=codex_cmd, extra_args=extra_args, title=title)
 
 

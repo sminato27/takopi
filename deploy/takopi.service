@@ -1,0 +1,17 @@
+[Unit]
+Description=Takopi Telegram pilot with ai-memory (Codex and Claude)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/takopi-test-project
+ExecStart=%h/.local/share/takopi-venv/bin/python /mnt/c/Users/SMinato/projects/takopi/scripts/run_local.py
+Environment=PATH=/home/sminato/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

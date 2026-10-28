@@ -26,6 +26,15 @@ async def handle_cancel(
     chat_id = msg.chat_id
     reply_id = msg.reply_to_message_id
 
+    if reply_id is None and msg.thread_id is not None:
+        matches = [
+            ref
+            for ref in running_tasks
+            if ref.channel_id == chat_id and ref.thread_id == msg.thread_id
+        ]
+        if len(matches) == 1:
+            reply_id = matches[0].message_id
+
     if reply_id is None:
         if msg.reply_to_text:
             await reply(text="nothing is currently running for that message.")

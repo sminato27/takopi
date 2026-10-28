@@ -6,13 +6,14 @@ import json
 import re
 import subprocess
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol, cast
 from weakref import WeakValueDictionary
 
 import anyio
 
 from .logging import get_logger, log_pipeline
+from .managed import AiMemoryConfig
 from .model import (
     Action,
     ActionEvent,
@@ -141,6 +142,8 @@ class JsonlStreamState:
 
 
 class JsonlSubprocessRunner(BaseRunner):
+    ai_memory: AiMemoryConfig | None = None
+
     def get_logger(self) -> Any:
         return getattr(self, "logger", get_logger(__name__))
 
@@ -613,6 +616,14 @@ class JsonlSubprocessRunner(BaseRunner):
         )
 
         cwd = get_run_base_dir()
+        managed = (
+            self.ai_memory.prepare(self.engine, cmd, resume, cwd, env)
+            if self.ai_memory is not None
+            else None
+        )
+        if managed is not None:
+            cmd = managed.command
+        pending_completed: CompletedEvent | None = None
 
         async with manage_subprocess(
             cmd,
@@ -621,6 +632,7 @@ class JsonlSubprocessRunner(BaseRunner):
             stderr=subprocess.PIPE,
             env=env,
             cwd=cwd,
+            termination_grace_s=15.0 if managed else 2.0,
         ) as proc:
             if proc.stdout is None or proc.stderr is None:
                 raise RuntimeError(self.pipes_error_message())
@@ -654,11 +666,26 @@ class JsonlSubprocessRunner(BaseRunner):
                     logger=logger,
                     pid=proc.pid,
                 ):
+                    if managed is not None:
+                        if isinstance(evt, StartedEvent):
+                            managed.bind(evt)
+                        if isinstance(evt, CompletedEvent):
+                            pending_completed = evt
+                            continue
                     yield evt
 
                 rc = await proc.wait()
 
             logger.info("subprocess.exit", pid=proc.pid, rc=rc)
+            if pending_completed is not None:
+                if rc != 0:
+                    pending_completed = replace(
+                        pending_completed,
+                        ok=False,
+                        error=f"Managed agent exited with code {rc}; check ai-memory capture before retrying.",
+                    )
+                yield pending_completed
+                return
             if stream.did_emit_completed:
                 return
             found_session = stream.found_session

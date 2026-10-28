@@ -67,6 +67,7 @@ class TelegramTopicsSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     enabled: bool = False
+    session_topics: bool = False
     scope: Literal["auto", "main", "projects", "all"] = "auto"
 
 

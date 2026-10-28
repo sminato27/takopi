@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import msgspec
+import anyio
 
 from ..context import RunContext
 from ..logging import get_logger
@@ -25,6 +26,7 @@ class TopicThreadSnapshot:
     sessions: dict[str, str]
     topic_title: str | None
     default_engine: str | None
+    creation_key: str | None = None
 
 
 class _ContextState(msgspec.Struct, forbid_unknown_fields=False):
@@ -41,6 +43,7 @@ class _ThreadState(msgspec.Struct, forbid_unknown_fields=False):
     sessions: dict[str, _SessionState] = msgspec.field(default_factory=dict)
     topic_title: str | None = None
     default_engine: str | None = None
+    creation_key: str | None = None
     trigger_mode: str | None = None
     engine_overrides: dict[str, EngineOverrides] = msgspec.field(default_factory=dict)
 
@@ -109,6 +112,7 @@ def _new_state() -> _TopicState:
 
 class TopicStateStore(JsonStateStore[_TopicState]):
     def __init__(self, path: Path) -> None:
+        self.creation_lock = anyio.Lock()
         super().__init__(
             path,
             version=STATE_VERSION,
@@ -117,6 +121,37 @@ class TopicStateStore(JsonStateStore[_TopicState]):
             log_prefix="telegram.topic_state",
             logger=logger,
         )
+
+    async def list_threads(self, chat_id: int) -> list[TopicThreadSnapshot]:
+        async with self._lock:
+            self._reload_locked_if_needed()
+            rows = []
+            for key, thread in self._state.threads.items():
+                chat, _, topic = key.partition(":")
+                if chat == str(chat_id) and topic.isdecimal():
+                    rows.append(self._snapshot_locked(thread, chat_id, int(topic)))
+            return sorted(rows, key=lambda row: row.thread_id, reverse=True)
+
+    async def create_session_topic(
+        self,
+        chat_id: int,
+        thread_id: int,
+        context: RunContext,
+        engine: str,
+        title: str,
+        creation_key: str,
+    ) -> None:
+        async with self._lock:
+            self._reload_locked_if_needed()
+            if self._get_thread_locked(chat_id, thread_id) is not None:
+                raise ValueError("Topic already has a binding")
+            self._state.threads[_thread_key(chat_id, thread_id)] = _ThreadState(
+                context=_context_to_state(context),
+                default_engine=engine,
+                topic_title=title,
+                creation_key=creation_key,
+            )
+            self._save_locked()
 
     async def get_thread(
         self, chat_id: int, thread_id: int
@@ -319,6 +354,7 @@ class TopicStateStore(JsonStateStore[_TopicState]):
             sessions=sessions,
             topic_title=thread.topic_title,
             default_engine=_normalize_text(thread.default_engine),
+            creation_key=thread.creation_key,
         )
 
     def _get_thread_locked(self, chat_id: int, thread_id: int) -> _ThreadState | None:

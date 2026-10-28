@@ -68,7 +68,7 @@ def _signal_process(
 
 @asynccontextmanager
 async def manage_subprocess(
-    cmd: Sequence[str], **kwargs: Any
+    cmd: Sequence[str], *, termination_grace_s: float = 2.0, **kwargs: Any
 ) -> AsyncIterator[Process]:
     """Ensure subprocesses receive SIGTERM, then SIGKILL after a 2s timeout."""
     if os.name == "posix":
@@ -80,7 +80,7 @@ async def manage_subprocess(
         if proc.returncode is None:
             with anyio.CancelScope(shield=True):
                 terminate_process(proc)
-                timed_out = await wait_for_process(proc, timeout=2.0)
+                timed_out = await wait_for_process(proc, timeout=termination_grace_s)
                 if timed_out:
                     kill_process(proc)
                     await proc.wait()

@@ -12,6 +12,8 @@ import msgspec
 from ..backends import EngineBackend, EngineConfig
 from ..events import EventFactory
 from ..logging import get_logger
+from ..config import ConfigError
+from ..managed import AiMemoryConfig
 from ..model import Action, ActionKind, EngineId, ResumeToken, TakopiEvent
 from ..runner import JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from .run_options import get_run_options
@@ -288,6 +290,8 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     allowed_tools: list[str] | None = None
     dangerously_skip_permissions: bool = False
     use_api_billing: bool = False
+    permission_mode: str | None = None
+    ai_memory: AiMemoryConfig | None = None
     session_title: str = "claude"
     logger = logger
 
@@ -299,6 +303,8 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     def _build_args(self, prompt: str, resume: ResumeToken | None) -> list[str]:
         run_options = get_run_options()
         args: list[str] = ["-p", "--output-format", "stream-json", "--verbose"]
+        if self.permission_mode is not None:
+            args.extend(["--permission-mode", self.permission_mode])
         if resume is not None:
             args.extend(["--resume", resume.value])
         model = self.model
@@ -314,6 +320,10 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
         if run_options is not None and run_options.reasoning:
             args.extend(["--effort", str(run_options.reasoning)])
             args.extend(["--settings", '{"alwaysThinkingEnabled":true}'])
+        if self.ai_memory is not None:
+            # ai-memory appends its native session selector. Keep the prompt on
+            # stdin so a trailing `--` cannot hide that selector from Claude.
+            return args
         args.append("--")
         args.append(prompt)
         return args
@@ -337,6 +347,8 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
         *,
         state: Any,
     ) -> bytes | None:
+        if self.ai_memory is not None:
+            return prompt.encode("utf-8")
         return None
 
     def env(self, *, state: Any) -> dict[str, str] | None:
@@ -468,6 +480,28 @@ def build_runner(config: EngineConfig, _config_path: Path) -> Runner:
     dangerously_skip_permissions = config.get("dangerously_skip_permissions") is True
     use_api_billing = config.get("use_api_billing") is True
     title = str(model) if model is not None else "claude"
+    ai_memory = AiMemoryConfig.from_config(config, _config_path)
+    permission_mode = config.get("permission_mode")
+    if permission_mode not in {
+        None,
+        "auto",
+        "default",
+        "acceptEdits",
+        "plan",
+        "dontAsk",
+        "bypassPermissions",
+    }:
+        raise ConfigError("Invalid claude.permission_mode")
+    if ai_memory is not None:
+        if dangerously_skip_permissions or permission_mode not in {None, "auto"}:
+            raise ConfigError(
+                "Managed Claude sessions require permission_mode = 'auto'"
+            )
+        permission_mode = "auto"
+        # Preserve the user's classifier and permission rules instead of adding
+        # Takopi's broad default Bash allow rule.
+        if "allowed_tools" not in config:
+            allowed_tools = None
 
     return ClaudeRunner(
         claude_cmd=claude_cmd,
@@ -476,6 +510,8 @@ def build_runner(config: EngineConfig, _config_path: Path) -> Runner:
         dangerously_skip_permissions=dangerously_skip_permissions,
         use_api_billing=use_api_billing,
         session_title=title,
+        permission_mode=permission_mode,
+        ai_memory=ai_memory,
     )
 
 

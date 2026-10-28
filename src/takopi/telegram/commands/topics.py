@@ -223,9 +223,15 @@ async def _handle_new_command(
     msg: TelegramIncomingMessage,
     store: TopicStateStore,
     *,
+    args_text: str = "",
     resolved_scope: str | None = None,
     scope_chat_ids: frozenset[int] | None = None,
 ) -> None:
+    if cfg.topics.session_topics:
+        from .sessions import create_session
+
+        await create_session(cfg, msg, args_text, store)
+        return
     reply = make_reply(cfg, msg)
     error = _topics_command_error(
         cfg,
