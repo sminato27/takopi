@@ -2,7 +2,7 @@
 
 Este checkout adapta o Takopi 0.23.4 (upstream e0123d4f9b2588bf45ec7250ad648c324e20ce20). A primeira etapa usa apenas o WSL Ubuntu-26.04. Nenhum executor remoto ou Agy foi configurado.
 
-Em 28/10/2026, o bot foi conectado ao grupo MyBots e o serviço ficou ativo, com acesso restrito ao usuário identificado pelo `/setup`. O projeto disponível para validação é `teste`. O início automático continua desabilitado até a validação do piloto.
+Em 28/10/2026, o bot foi conectado ao grupo MyBots, com acesso restrito ao usuário identificado pelo `/setup`. Após os testes reais de ambos os agentes, o serviço ficou ativo e habilitado no systemd do usuário, com linger. Os projetos disponíveis são `teste`, `sminato`, `llamp`, `gpsmock`, `chessrush` e `takopi`. O WSL precisa estar em execução.
 
 ## Instalação reproduzível
 
@@ -123,3 +123,19 @@ Verificações após a correção:
 - Validação humana pendente: enviar `/new codex teste` e `/new claude teste`, conversar nos tópicos, verificar `/sessions`, isolamento, cancelamento e retomada após reinício. Não houve nova execução de modelo automatizada nesta ativação; os testes reais dos CLIs estão registrados acima.
 
 Depois dessa validação, cadastrar os projetos desejados e habilitar o serviço no início do WSL. As outras máquinas e o Agy continuam para uma etapa posterior.
+
+## Testes do usuário e ampliação para projetos locais
+
+O usuário testou os dois agentes no Telegram. Os logs confirmaram conclusão com sucesso e saída zero: Claude em aproximadamente 7,3 segundos e Codex em 6,9 segundos. Cada tópico recebeu um ID nativo e um workstream distintos. A leitura do ledger do ai-memory confirmou a pergunta e a resposta de cada conversa, além do checkpoint com saída zero. As flags exigidas foram confirmadas na linha de lançamento.
+
+Depois de confirmar que não havia execução de agente ativa, foi criada uma cópia privada de configuração, estados JSON e banco SQLite em `~/.takopi/backups/validation-20261028T053730Z`. O serviço foi habilitado (`systemctl --user enable takopi`), o linger do usuário ativado e o serviço reiniciado. Os dois tópicos e os dois vínculos nativos permaneceram idênticos; o novo processo enviou a inicialização sem falhas. Isso valida a persistência do estado, mas ainda não representa um novo turno de conversa enviado pelo usuário após o reinício.
+
+O usuário pediu para incluir todos os projetos e sessões deste WSL. Foram cadastrados os diretórios existentes encontrados nos históricos locais, mais o próprio Takopi, sem duplicar caminhos que diferem apenas na capitalização de `Users/SMinato`. O reload da configuração e o novo menu foram confirmados nos logs.
+
+O inventário privado `~/.takopi/native-session-inventory.json` contém 20 históricos do Codex e 20 do Claude, obtidos de `~/.codex/state_5.sqlite` e `~/.claude/projects/*/*.jsonl`. Uma sessão aponta para um bind mount temporário do Docker que já não existe; ela foi preservada no inventário e não teve seu diretório substituído por suposição.
+
+**Pendência de implementação:** incluir esses históricos no `/sessions` e permitir abrir/retomar cada um em seu tópico. O adaptador atual exige vínculo prévio no `ai_memory_sessions.sqlite3`, portanto não basta copiar IDs para o estado de tópicos. É necessário validar a adoção de uma sessão nativa existente por um novo workstream, conservar cwd e configuração originais, evitar sessões que estejam em execução e testar a retomada de ambos os agentes. O inventário não significa que os históricos já foram importados ou que podem ser retomados pelo Telegram.
+
+O cadastro atual de projetos e as duas sessões criadas pelo bot estão operacionais. A expansão para outras instalações e Agy permanece fora desta etapa.
+
+O desenvolvimento foi interrompido novamente quando a consulta indicou 9% restantes na janela de 5 horas e 52% na semanal. A varredura adicional de repositórios sob `projects`, `Desktop` e `Documents` não terminou; repetir essa busca na continuidade antes de afirmar que todos os projetos do disco foram encontrados. O cadastro concluído cobre os diretórios existentes identificados nos históricos locais e o Takopi. O inventário privado permite retomar a implementação da importação sem reler o conteúdo completo das conversas.
