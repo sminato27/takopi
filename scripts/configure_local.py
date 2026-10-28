@@ -107,10 +107,11 @@ def main() -> None:
 
     config = {
         "default_engine": "codex",
+        "enabled_engines": ["codex", "claude"],
         "default_project": "teste",
         "transport": "telegram",
         "watch_config": True,
-        "plugins": {"enabled": ["codex", "claude", "telegram"]},
+        "plugins": {"enabled": ["takopi"]},
         "codex": {"mode": "exec", "ai_memory": True, "extra_args": []},
         "claude": {"ai_memory": True, "permission_mode": "auto"},
         "projects": projects,

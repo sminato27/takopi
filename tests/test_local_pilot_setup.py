@@ -10,6 +10,8 @@ import httpx
 import pytest
 
 from takopi.settings import load_settings
+from takopi.runtime_loader import build_runtime_spec
+from takopi.transports import get_transport
 
 
 @pytest.fixture
@@ -63,7 +65,9 @@ def setup_bot(tmp_path, monkeypatch):
     return main, tmp_path / ".takopi/takopi.toml", responses, token
 
 
-def test_configured_pilot_loads_and_preserves_existing_config(setup_bot, capsys):
+def test_configured_pilot_loads_and_preserves_existing_config(
+    setup_bot, capsys, monkeypatch
+):
     main, path, responses, token = setup_bot
     main()
     assert token not in capsys.readouterr().out
@@ -72,7 +76,17 @@ def test_configured_pilot_loads_and_preserves_existing_config(setup_bot, capsys)
     assert settings.transports.telegram is not None
     assert settings.transports.telegram.allowed_user_ids == [42]
     assert settings.transports.telegram.topics.session_topics
-    assert settings.plugins.enabled == ["codex", "claude", "telegram"]
+    # Exercise the installed entry points and actual runtime, not just TOML parsing.
+    # Plugin allowlists contain distribution names; engine IDs are a separate setting.
+    monkeypatch.setattr("shutil.which", lambda _cmd: "/bin/echo")
+    runtime = build_runtime_spec(settings=settings, config_path=path).to_runtime(
+        config_path=path
+    )
+    assert set(runtime.available_engine_ids()) == {"codex", "claude"}
+    assert set(runtime.engine_ids) == {"codex", "claude"}
+    assert (
+        get_transport("telegram", allowlist=settings.plugins.enabled).id == "telegram"
+    )
     raw = tomllib.loads(path.read_text())
     assert raw["codex"]["ai_memory"] and raw["codex"]["mode"] == "exec"
     assert raw["claude"]["ai_memory"] and raw["claude"]["permission_mode"] == "auto"

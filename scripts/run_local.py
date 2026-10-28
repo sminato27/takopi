@@ -13,6 +13,8 @@ def main() -> None:
             "Configure the dedicated bot with scripts/configure_local.py first."
         )
     config = tomllib.loads(path.read_text())
+    if set(config.get("enabled_engines", [])) != {"codex", "claude"}:
+        raise SystemExit("This pilot requires enabled_engines = ['codex', 'claude'].")
     telegram = config.get("transports", {}).get("telegram", {})
     owners = telegram.get("allowed_user_ids", [])
     if not owners or any(type(owner) is not int or owner <= 0 for owner in owners):

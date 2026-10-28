@@ -2,6 +2,8 @@
 
 Este checkout adapta o Takopi 0.23.4 (upstream e0123d4f9b2588bf45ec7250ad648c324e20ce20). A primeira etapa usa apenas o WSL Ubuntu-26.04. Nenhum executor remoto ou Agy foi configurado.
 
+Em 28/10/2026, o bot foi conectado ao grupo MyBots e o serviço ficou ativo, com acesso restrito ao usuário identificado pelo `/setup`. O projeto disponível para validação é `teste`. O início automático continua desabilitado até a validação do piloto.
+
 ## Instalação reproduzível
 
 Requer Python 3.14, uv, os CLIs autenticados e ai-memory com hooks/MCP já configurados. Instale as dependências fixadas no lockfile:
@@ -68,10 +70,10 @@ Claude informa seu modo efetivo no evento inicial; o adaptador interrompe a exec
 ## Limites desta etapa
 
 - `/sessions` lista tópicos e conversas do bot, não importa sessões anteriores abertas nos terminais. Não há anexação a uma sessão de terminal que já esteja executando.
-- Sem token/grupo não há teste real da entrega no Telegram; testes locais usam um transporte simulado.
+- O envio da inicialização e o menu foram confirmados pela API real do Telegram. A validação de conversas iniciadas por mensagens do usuário no grupo é uma etapa separada dos testes locais.
 - O Takopi descarta mensagens acumuladas enquanto estava desligado ao iniciar. Isso evita executar tarefas antigas automaticamente; reenvie a tarefa desejada após o aviso de inicialização.
 - Áudio e transferência de arquivos ficam desativados no piloto. Regras/skills/MCPs continuam sendo os dos CLIs.
-- A configuração proposta mantém apenas os plugins de Codex, Claude e Telegram disponíveis.
+- `plugins.enabled = ["takopi"]` autoriza a distribuição Python que fornece os plugins. `enabled_engines = ["codex", "claude"]` limita os executores disponíveis, mesmo que outros CLIs estejam instalados. O transporte é Telegram. Sem `enabled_engines`, o comportamento upstream de descobrir todos os executores continua disponível; valores desconhecidos ou exclusão do agente padrão são rejeitados.
 - Para voltar ao uso normal dos CLIs, basta parar o serviço. Nenhuma configuração global dos agentes foi substituída.
 
 ## Verificação
@@ -106,3 +108,18 @@ Próximos passos:
 4. Só após validação pelo usuário, habilitar início automático e planejar as outras instalações/Agy. Não expandir o escopo neste piloto.
 
 Não há token nem credenciais no repositório. `~/.takopi/takopi.toml` ainda não foi criado. As configurações globais de Codex e Claude não foram alteradas. `/sessions` continua limitado às conversas deste bot; importação de históricos do terminal permanece fora desta etapa.
+
+## Ativação em 28/10/2026
+
+O token foi fornecido por arquivo privado. A API confirmou que MyBots é um supergrupo com tópicos, que o bot é administrador com permissão de gerenciar tópicos e que o autor das mensagens `/setup` é o criador do grupo. Esse usuário foi incluído como único operador autorizado. O ID positivo que acompanha o ID `-100…` do grupo não foi confundido com um ID de usuário.
+
+A primeira inicialização falhou com `Unknown engine 'codex'`: a configuração anterior usava IDs de executores em `plugins.enabled`, que aceita nomes de distribuições Python. A configuração e o gerador foram corrigidos; a seleção explícita de executores ficou em `enabled_engines`. O teste de configuração agora constrói o runtime real pelos entry points instalados e confirma que apenas Codex e Claude estão disponíveis.
+
+Verificações após a correção:
+
+- `takopi doctor`: token, grupo, tópicos e configuração aprovados.
+- Serviço `takopi.service`: ativo; menu confirmado por `getMyCommands` e envio da inicialização registrado como `startup.sent`. Configuração privada em `~/.takopi/takopi.toml`, modo 0600. Cópia anterior preservada no mesmo diretório privado.
+- Suíte completa: **614 testes passaram**, cobertura **81,74%**. Ruff lint/formatação aprovados; Ty sem erros, mantendo os cinco avisos preexistentes.
+- Validação humana pendente: enviar `/new codex teste` e `/new claude teste`, conversar nos tópicos, verificar `/sessions`, isolamento, cancelamento e retomada após reinício. Não houve nova execução de modelo automatizada nesta ativação; os testes reais dos CLIs estão registrados acima.
+
+Depois dessa validação, cadastrar os projetos desejados e habilitar o serviço no início do WSL. As outras máquinas e o Agy continuam para uma etapa posterior.

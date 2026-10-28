@@ -152,6 +152,7 @@ class TakopiSettings(BaseSettings):
 
     watch_config: bool = False
     default_engine: NonEmptyStr = "codex"
+    enabled_engines: list[NonEmptyStr] | None = None
     default_project: NonEmptyStr | None = None
     projects: dict[str, ProjectSettings] = Field(default_factory=dict)
 

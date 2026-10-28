@@ -50,3 +50,17 @@ def test_resolve_default_engine_unknown(tmp_path: Path) -> None:
             config_path=tmp_path / "takopi.toml",
             engine_ids=["codex"],
         )
+
+
+@pytest.mark.parametrize("enabled", [[], ["claude"], ["codex", "unknown"]])
+def test_enabled_engines_reject_missing_default_or_unknown_backend(tmp_path, enabled):
+    settings = TakopiSettings.model_validate(
+        {
+            "enabled_engines": enabled,
+            "transports": {"telegram": {"bot_token": "token", "chat_id": 123}},
+        }
+    )
+    with pytest.raises(ConfigError, match="Unknown"):
+        runtime_loader.build_runtime_spec(
+            settings=settings, config_path=tmp_path / "takopi.toml"
+        )

@@ -176,6 +176,13 @@ def build_runtime_spec(
 ) -> RuntimeSpec:
     allowlist = resolve_plugins_allowlist(settings)
     engine_ids = list_backend_ids(allowlist=allowlist)
+    if settings.enabled_engines is not None:
+        unknown = set(settings.enabled_engines) - set(engine_ids)
+        if unknown:
+            raise ConfigError(f"Unknown enabled engines: {', '.join(sorted(unknown))}.")
+        engine_ids = [
+            engine for engine in engine_ids if engine in settings.enabled_engines
+        ]
     projects = settings.to_projects_config(
         config_path=config_path,
         engine_ids=engine_ids,
