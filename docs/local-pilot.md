@@ -2,7 +2,7 @@
 
 Este checkout adapta o Takopi 0.23.4 (upstream e0123d4f9b2588bf45ec7250ad648c324e20ce20). A primeira etapa usa apenas o WSL Ubuntu-26.04. Nenhum executor remoto ou Agy foi configurado.
 
-Em 28/10/2026, o bot foi conectado ao grupo MyBots, com acesso restrito ao usuário identificado pelo `/setup`. Após os testes reais de ambos os agentes, o serviço ficou ativo e habilitado no systemd do usuário, com linger. Há 16 projetos cadastrados e 40 históricos locais no catálogo. O WSL precisa estar em execução.
+Em 28/10/2026, o bot foi conectado ao grupo MyBots, com acesso restrito ao usuário identificado pelo `/setup`. Após os testes reais de ambos os agentes, o serviço ficou ativo e habilitado no systemd do usuário, com linger. Há 27 projetos/diretórios de trabalho cadastrados e 40 históricos locais no catálogo. O WSL precisa estar em execução.
 
 ## Instalação reproduzível
 
@@ -162,8 +162,19 @@ A varredura adicional terminou e o usuário pediu para continuar. Foram cadastra
 | telegram_drive | Documents/Scripts/Telegram-Drive |
 | upload_assistant | Documents/Scripts/Upload-Assistant |
 | flutter | Documents/flutter |
+| ctb_backup | Documents/Projetos/BKPChaturbate-dvr_working020726 |
+| nelio_aulas | Documents/Projetos/NelioAulas |
+| audio | Documents/Projetos/audio |
+| govt_doorway | Documents/Projetos/govt-doorway-connect-main |
+| untitled | Documents/Projetos/untitled |
+| hellyes | Documents/Scripts/HellYes |
+| opus_tools | Documents/Scripts/OpusTools |
+| tdarr_scripts | Documents/Scripts/Tdarr |
+| votify | Documents/Scripts/votify-main |
+| power_toggle | Documents/Scripts/PowerToggle |
+| scripts | Documents/Scripts |
 
-O projeto `teste` permanece em `~/.local/share/takopi-test-project`, totalizando 16 aliases. O bot confirmou o novo menu e `/resume` pela API real do Telegram depois de reiniciar, com serviço ativo e habilitado, sem reinicializações por falha.
+O projeto `teste` permanece em `~/.local/share/takopi-test-project`, totalizando 27 aliases. A conferência final incluiu projetos sem Git, um diretório de aulas Java, a área de áudio e pastas com scripts próprios; diretórios contendo apenas aplicações binárias/dependências não receberam aliases individuais, mas continuam acessíveis pelo projeto `scripts` quando estão nessa árvore. O bot confirmou o novo menu e `/resume` pela API real do Telegram depois de reiniciar, com serviço ativo e habilitado, sem reinicializações por falha.
 
 O catálogo nativo é atualizado a cada `/sessions`: 20 históricos do Codex e 20 do Claude na validação, sem duplicar os dois IDs já vinculados a tópicos. O histórico com diretório Docker desaparecido continua visível, com indicação de indisponibilidade, sem tentar mudar seu projeto. Históricos antigos criam tópicos sob demanda, evitando criar dezenas de tópicos durante o cadastro. Não foram alterados os bancos e arquivos de histórico dos CLIs para construir a listagem.
 
