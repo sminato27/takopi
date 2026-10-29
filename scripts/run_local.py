@@ -13,19 +13,22 @@ def main() -> None:
             "Configure the dedicated bot with scripts/configure_local.py first."
         )
     config = tomllib.loads(path.read_text())
-    if set(config.get("enabled_engines", [])) != {"codex", "claude"}:
-        raise SystemExit("This pilot requires enabled_engines = ['codex', 'claude'].")
+    engines = set(config.get("enabled_engines", []))
+    if not {"codex", "claude"} <= engines <= {"codex", "claude", "agy"}:
+        raise SystemExit("Enable codex and claude, with optional agy.")
     telegram = config.get("transports", {}).get("telegram", {})
     owners = telegram.get("allowed_user_ids", [])
     if not owners or any(type(owner) is not int or owner <= 0 for owner in owners):
         raise SystemExit(
             "Set allowed_user_ids to your numeric Telegram user ID before starting."
         )
+    if any(config.get(engine, {}).get("ai_memory") is not True for engine in engines):
+        raise SystemExit("All enabled agents must use ai_memory = true.")
     if (
-        config.get("codex", {}).get("ai_memory") is not True
-        or config.get("claude", {}).get("ai_memory") is not True
+        "agy" in engines
+        and config.get("agy", {}).get("dangerously_skip_permissions") is not True
     ):
-        raise SystemExit("Both agents must use ai_memory = true.")
+        raise SystemExit("agy requires dangerously_skip_permissions = true.")
     if config.get("codex", {}).get("mode") != "exec":
         raise SystemExit("This pilot requires codex.mode = exec.")
     if config.get("claude", {}).get("permission_mode") != "auto":

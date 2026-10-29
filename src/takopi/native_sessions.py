@@ -7,14 +7,16 @@ import os
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 
 @dataclass(frozen=True)
 class NativeSession:
     engine: str
     session_id: str
-    cwd: Path
+    cwd: Path | None
     source: Path
     title: str
     modified: float
@@ -106,7 +108,49 @@ def native_sessions() -> list[NativeSession]:
                 )
         except OSError:
             continue
+    for row in agy_sessions():
+        rows[row.engine, row.session_id] = row
     return sorted(rows.values(), key=lambda row: row.modified, reverse=True)
+
+
+def agy_sessions() -> list[NativeSession]:
+    root = Path.home() / ".gemini/antigravity-cli"
+    database = root / "conversation_summaries.db"
+    if not database.is_file():
+        return []
+    result = []
+    try:
+        with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as db:
+            for sid, title, uris, modified in db.execute(
+                "SELECT conversation_id,title,workspace_uris,last_modified_time FROM conversation_summaries"
+            ):
+                cwd = None
+                try:
+                    paths = json.loads(uris or "[]")
+                    if (
+                        isinstance(paths, list)
+                        and len(paths) == 1
+                        and isinstance(paths[0], str)
+                    ):
+                        uri = urlparse(paths[0])
+                        if uri.scheme == "file" and uri.netloc in {"", "localhost"}:
+                            cwd = Path(unquote(uri.path))
+                    timestamp = datetime.fromisoformat(modified).timestamp()
+                except (TypeError, ValueError):
+                    timestamp = database.stat().st_mtime
+                result.append(
+                    NativeSession(
+                        "agy",
+                        sid,
+                        cwd,
+                        root / "conversations" / f"{sid}.db",
+                        title or sid,
+                        timestamp,
+                    )
+                )
+    except (OSError, sqlite3.Error):
+        return []
+    return result
 
 
 def native_directory_busy(cwd: Path) -> bool:
@@ -116,7 +160,11 @@ def native_directory_busy(cwd: Path) -> bool:
             continue
         try:
             args = (proc / "cmdline").read_bytes().split(b"\0")
-            if not args or Path(os.fsdecode(args[0])).name not in {"codex", "claude"}:
+            if not args or Path(os.fsdecode(args[0])).name not in {
+                "codex",
+                "claude",
+                "agy",
+            }:
                 continue
             if same_directory(proc / "cwd", cwd):
                 return True

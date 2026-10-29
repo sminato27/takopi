@@ -678,7 +678,7 @@ class JsonlSubprocessRunner(BaseRunner):
 
             logger.info("subprocess.exit", pid=proc.pid, rc=rc)
             if pending_completed is not None:
-                if rc != 0:
+                if rc != 0 and (pending_completed.ok or not pending_completed.error):
                     pending_completed = replace(
                         pending_completed,
                         ok=False,

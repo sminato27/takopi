@@ -1,3 +1,9 @@
+# Expansão para Windows, outro WSL e Antigravity
+
+A expansão de 28/10/2026, incluindo `/new agy`, os 32 projetos e os históricos
+importados, está documentada em [migration-20261029.md](migration-20261029.md).
+Essa atualização complementa o registro do piloto abaixo.
+
 # Piloto local: Codex e Claude pelo Telegram
 
 Este checkout adapta o Takopi 0.23.4 (upstream e0123d4f9b2588bf45ec7250ad648c324e20ce20). A primeira etapa usa apenas o WSL Ubuntu-26.04. Nenhum executor remoto ou Agy foi configurado.

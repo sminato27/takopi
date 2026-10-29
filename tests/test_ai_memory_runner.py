@@ -10,6 +10,7 @@ from takopi.managed import AiMemoryConfig
 from takopi.model import CompletedEvent, StartedEvent
 from takopi.runners.claude import build_runner as build_claude
 from takopi.runners.codex import build_runner as build_codex
+from takopi.runners.agy import build_runner as build_agy
 from takopi.utils.paths import reset_run_base_dir, set_run_base_dir
 
 
@@ -26,9 +27,9 @@ def managed_cli(tmp_path, monkeypatch):
         workstream = args[args.index(selector) + 1]
         engine = args[args.index(selector) + 2]
         saved = root / (workstream + '.json')
-        prompt = sys.stdin.read()
+        prompt = args[args.index('-p') + 1] if engine == 'agy' else sys.stdin.read()
         if selector == '--new':
-            native_selector = '--resume' if engine == 'claude' else 'resume'
+            native_selector = {'claude': '--resume', 'agy': '--conversation'}.get(engine, 'resume')
             session = args[args.index(native_selector) + 1] if native_selector in args else str(uuid.uuid4())
         else:
             session = json.loads(saved.read_text())['session']
@@ -39,11 +40,15 @@ def managed_cli(tmp_path, monkeypatch):
             events = [dict(type='thread.started', thread_id=session),
                       dict(type='item.completed', item=dict(id='a', type='agent_message', text=prompt)),
                       dict(type='turn.completed', usage=dict(input_tokens=1, cached_input_tokens=0, output_tokens=1))]
+        elif engine == 'agy':
+            events = [dict(event='init', conversation_id=session,
+                           init=dict(permission_mode=os.environ.get('FAKE_PERMISSION_MODE', 'always-proceed'))),
+                      dict(event='result', result=dict(conversation_id=session, status='SUCCESS', response=prompt))]
         else:
             events = [dict(type='system', subtype='init', session_id=session,
                            permissionMode=os.environ.get('FAKE_PERMISSION_MODE','auto')),
                       dict(type='result', subtype='success', session_id=session, result=prompt,
-                           is_error=False, duration_ms=1, duration_api_ms=1, num_turns=1)]
+                           is_error=bool(os.environ.get('FAKE_NATIVE_ERROR')), duration_ms=1, duration_api_ms=1, num_turns=1)]
         for event in events:
             print(json.dumps(event), flush=True)
         time.sleep(0.03)
@@ -63,11 +68,28 @@ def runner_for(engine, directory):
     if engine == "codex":
         config.update(mode="exec", extra_args=[])
         return build_codex(config, directory / "takopi.toml")
+    if engine == "agy":
+        config["dangerously_skip_permissions"] = True
+        return build_agy(config, directory / "takopi.toml")
     return build_claude(config, directory / "takopi.toml")
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("engine", ["codex", "claude"])
+async def test_native_failure_keeps_provider_error(managed_cli, monkeypatch):
+    monkeypatch.setenv("FAKE_NATIVE_ERROR", "1")
+    monkeypatch.setenv("FAKE_EXIT_CODE", "1")
+    marker = set_run_base_dir(managed_cli)
+    try:
+        runner = runner_for("claude", managed_cli)
+        events = [event async for event in runner.run("Usage limit reached", None)]
+        assert not events[-1].ok
+        assert events[-1].error == "Usage limit reached"
+    finally:
+        reset_run_base_dir(marker)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("engine", ["codex", "claude", "agy"])
 async def test_managed_new_resume_and_restart_preserve_identity(managed_cli, engine):
     directory = managed_cli
     marker = set_run_base_dir(directory)
@@ -88,6 +110,8 @@ async def test_managed_new_resume_and_restart_preserve_identity(managed_cli, eng
             assert "--permission-mode" in record["args"]
             assert "--allowedTools" not in record["args"]
             assert "--dangerously-skip-permissions" not in record["args"]
+        elif engine == "agy":
+            assert "--dangerously-skip-permissions" in record["args"]
         else:
             assert "--yolo" in record["args"]
         runner = runner_for(engine, directory)

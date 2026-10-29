@@ -42,6 +42,7 @@ takopi = "takopi.cli:main"
 [project.entry-points."takopi.engine_backends"]
 codex = "takopi.runners.codex:BACKEND"
 claude = "takopi.runners.claude:BACKEND"
+agy = "takopi.runners.agy:BACKEND"
 opencode = "takopi.runners.opencode:BACKEND"
 pi = "takopi.runners.pi:BACKEND"
 

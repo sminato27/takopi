@@ -38,7 +38,7 @@ def session_setup(tmp_path):
     router = AutoRouter(
         entries=[
             RunnerEntry(engine=e, runner=ScriptRunner([Return(answer="ok")], engine=e))
-            for e in ["codex", "claude"]
+            for e in ["codex", "claude", "agy"]
         ],
         default_engine="codex",
     )
@@ -86,6 +86,7 @@ async def test_new_selector_then_project_then_independent_topics(session_setup):
     assert [r[0]["callback_data"] for r in buttons] == [
         "session:new:codex",
         "session:new:claude",
+        "session:new:agy",
     ]
     await create_session(cfg, msg, "claude", store)
     assert "projeto" in transport.send_calls[-1]["message"].text
@@ -107,6 +108,17 @@ async def test_new_selector_then_project_then_independent_topics(session_setup):
 
 
 @pytest.mark.anyio
+async def test_agy_topic_and_filtered_session_list(session_setup):
+    cfg, msg, store, transport, bot = session_setup
+    await create_session(cfg, msg, "agy test migração", store)
+    thread = await store.get_thread(msg.chat_id, 101)
+    assert thread.default_engine == "agy"
+    await store.set_session_resume(msg.chat_id, 101, ResumeToken("agy", "sid"))
+    await list_sessions(cfg, msg, "agy", store)
+    assert "Sessões (1)" in transport.send_calls[-1]["message"].text
+
+
+@pytest.mark.anyio
 async def test_creation_is_idempotent_across_restart_and_listing_is_filtered(
     session_setup,
 ):
@@ -125,7 +137,7 @@ async def test_creation_is_idempotent_across_restart_and_listing_is_filtered(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("arguments", ["agy test", "codex missing"])
+@pytest.mark.parametrize("arguments", ["unavailable test", "codex missing"])
 async def test_invalid_selection_does_not_create_a_topic(session_setup, arguments):
     cfg, msg, store, transport, bot = session_setup
     await create_session(cfg, msg, arguments, store)

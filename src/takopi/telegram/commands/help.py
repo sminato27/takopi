@@ -38,10 +38,14 @@ def build_help_messages(cfg: TelegramBridgeConfig) -> list[str]:
             "/new — limpa o vínculo com a sessão atual para começar outra conversa; mantém o projeto/contexto."
         )
     lines.append("/projects — lista os projetos cadastrados e exemplos de uso.")
+    if "agy" in engines:
+        lines.append(
+            "Antigravity usa o nome `agy`: `/new agy` cria uma conversa e `/sessions agy` lista seus históricos."
+        )
     if cfg.topics.enabled:
         lines.extend(
             [
-                "/sessions [codex|claude|all] [página] — lista sessões; exemplo: `/sessions claude` ou `/sessions all 2`.",
+                f"/sessions [{'|'.join(engines)}|all] [página] — lista sessões; exemplo: `/sessions {engine}` ou `/sessions all 2`.",
             ]
         )
         if cfg.topics.import_native_sessions:

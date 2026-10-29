@@ -69,19 +69,21 @@ async def create_session(
         return
     args = split_command_args(args_text)
     engines = tuple(
-        e for e in cfg.runtime.available_engine_ids() if e in {"codex", "claude"}
+        e for e in cfg.runtime.available_engine_ids() if e in {"codex", "claude", "agy"}
     )
     if not args:
         await _choose(
             cfg,
             msg,
             "Escolha o agente desta sessão:",
-            [(e.title(), e) for e in engines],
+            [("Antigravity (agy)" if e == "agy" else e.title(), e) for e in engines],
         )
         return
     engine = args[0].lower()
     if engine not in engines:
-        await reply(text="Agente indisponível. Use /new codex ou /new claude.")
+        await reply(
+            text="Agente indisponível. Use /new para escolher um agente habilitado."
+        )
         return
     aliases = cfg.runtime.project_aliases()
     if len(args) == 1:
@@ -164,8 +166,9 @@ async def list_sessions(
 ) -> None:
     reply = make_reply(cfg, msg)
     args = split_command_args(args_text)
-    if len(args) > 2 or (args and args[0] not in {"codex", "claude", "all"}):
-        await reply(text="Use /sessions [codex|claude|all] [página].")
+    engines = set(cfg.runtime.available_engine_ids()) & {"codex", "claude", "agy"}
+    if len(args) > 2 or (args and args[0] not in engines | {"all"}):
+        await reply(text=f"Use /sessions [{'|'.join(sorted(engines))}|all] [página].")
         return
     try:
         page = int(args[1]) if len(args) == 2 else 1
@@ -192,6 +195,8 @@ async def list_sessions(
     if cfg.topics.import_native_sessions:
         bound = {(key, value) for row in rows for key, value in row.sessions.items()}
         for native in native_sessions():
+            if native.engine not in engines:
+                continue
             if (engine and native.engine != engine) or (
                 native.engine,
                 native.session_id,
@@ -210,13 +215,15 @@ async def list_sessions(
         *entries[(page - 1) * 10 : page * 10],
     ]
     if not entries:
-        lines.append("Crie uma sessão com /new codex ou /new claude.")
+        lines.append("Crie uma sessão com /new.")
     if len(entries) > page * 10:
         lines.append(f"Próxima página: /sessions {engine or 'all'} {page + 1}")
     await reply(text="\n".join(lines))
 
 
 def _project_for_native(cfg: TelegramBridgeConfig, native: NativeSession) -> str | None:
+    if native.cwd is None:
+        return None
     for alias in cfg.runtime.project_aliases():
         path = cfg.runtime.resolve_run_cwd(RunContext(project=alias))
         if path is not None and path.is_dir() and same_directory(path, native.cwd):
@@ -241,11 +248,10 @@ async def resume_native(
     if (
         not cfg.topics.import_native_sessions
         or len(args) != 2
-        or args[0] not in {"codex", "claude"}
+        or args[0]
+        not in set(cfg.runtime.available_engine_ids()) & {"codex", "claude", "agy"}
     ):
-        await reply(
-            text="Use /resume codex ID ou /resume claude ID, conforme /sessions."
-        )
+        await reply(text="Use /resume AGENTE ID, conforme /sessions.")
         return
     for row in await store.list_threads(msg.chat_id):
         if row.sessions.get(args[0]) == args[1]:
@@ -265,7 +271,7 @@ async def resume_native(
         await reply(text="Histórico local não encontrado. Consulte /sessions.")
         return
     project = _project_for_native(cfg, native)
-    if project is None or not native.source.is_file():
+    if project is None or native.cwd is None or not native.source.is_file():
         await reply(
             text="O diretório ou arquivo deste histórico não está disponível. Nenhuma sessão foi alterada."
         )
@@ -296,9 +302,6 @@ async def resume_native(
 async def show_projects(
     cfg: TelegramBridgeConfig, msg: TelegramIncomingMessage
 ) -> None:
-    lines = ["Projetos disponíveis neste WSL:"]
-    lines.extend(
-        f"• {alias} — /new codex {alias} ou /new claude {alias}"
-        for alias in cfg.runtime.project_aliases()
-    )
+    lines = ["Projetos disponíveis neste WSL. Use /new AGENTE PROJETO:"]
+    lines.extend(f"• {alias}" for alias in cfg.runtime.project_aliases())
     await make_reply(cfg, msg)(text="\n".join(lines))

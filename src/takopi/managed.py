@@ -14,6 +14,14 @@ from .config import ConfigError
 from .model import ResumeToken, StartedEvent
 
 
+def config_home_for(engine: str, environment: dict[str, str]) -> str:
+    home = Path(environment.get("HOME", str(Path.home())))
+    if engine == "agy":
+        return str((home / ".gemini/antigravity-cli").resolve())
+    key = "CODEX_HOME" if engine == "codex" else "CLAUDE_CONFIG_DIR"
+    return str(Path(environment.get(key) or home / f".{engine}").resolve())
+
+
 @dataclass(frozen=True)
 class AiMemoryConfig:
     executable: str
@@ -49,10 +57,7 @@ class AiMemoryConfig:
         return connection
 
     def allow_import(self, engine: str, native_id: str, cwd: Path) -> None:
-        home_key = "CODEX_HOME" if engine == "codex" else "CLAUDE_CONFIG_DIR"
-        config_home = str(
-            Path(os.environ.get(home_key) or Path.home() / f".{engine}").resolve()
-        )
+        config_home = config_home_for(engine, dict(os.environ))
         with closing(self.connect()) as connection, connection:
             connection.execute(
                 "INSERT OR IGNORE INTO adoptions VALUES (?,?,?,?)",
@@ -67,13 +72,11 @@ class AiMemoryConfig:
         cwd: Path | None,
         env: dict[str, str] | None,
     ) -> ManagedLaunch:
-        if engine not in {"codex", "claude"}:
+        if engine not in {"codex", "claude", "agy"}:
             raise ConfigError(f"ai-memory adapter is not implemented for {engine}")
         directory = str((cwd or Path.cwd()).resolve())
         environment = os.environ if env is None else env
-        home_key = "CODEX_HOME" if engine == "codex" else "CLAUDE_CONFIG_DIR"
-        default_home = Path(environment.get("HOME", str(Path.home()))) / f".{engine}"
-        config_home = str(Path(environment.get(home_key) or default_home).resolve())
+        config_home = config_home_for(engine, dict(environment))
         workstream = None
         if resume is not None:
             with closing(self.connect()) as connection:
@@ -141,6 +144,13 @@ class ManagedLaunch:
             and (event.meta or {}).get("permissionMode") != "auto"
         ):
             raise RuntimeError("Claude did not start in auto mode; execution stopped")
+        if (
+            self.engine == "agy"
+            and (event.meta or {}).get("permission_mode") != "always-proceed"
+        ):
+            raise RuntimeError(
+                "Antigravity did not start with skip-permissions; execution stopped"
+            )
         with closing(self.config.connect()) as connection, connection:
             existing = connection.execute(
                 "SELECT workstream FROM sessions WHERE engine=? AND native_id=? "
