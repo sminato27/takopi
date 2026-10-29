@@ -143,6 +143,11 @@ class JsonlStreamState:
 
 class JsonlSubprocessRunner(BaseRunner):
     ai_memory: AiMemoryConfig | None = None
+    defer_completion: bool = False
+
+    def trailing_events(self, line: bytes, *, state: Any) -> list[TakopiEvent]:
+        """Optional telemetry after a result, while completion is still buffered."""
+        return []
 
     def get_logger(self) -> Any:
         return getattr(self, "logger", get_logger(__name__))
@@ -526,6 +531,8 @@ class JsonlSubprocessRunner(BaseRunner):
         pid: int,
     ) -> list[TakopiEvent]:
         if stream.did_emit_completed:
+            if self.defer_completion:
+                return self.trailing_events(raw_line, state=state)
             if not stream.ignored_after_completed:
                 log_pipeline(
                     logger,
@@ -666,12 +673,13 @@ class JsonlSubprocessRunner(BaseRunner):
                     logger=logger,
                     pid=proc.pid,
                 ):
-                    if managed is not None:
-                        if isinstance(evt, StartedEvent):
-                            managed.bind(evt)
-                        if isinstance(evt, CompletedEvent):
-                            pending_completed = evt
-                            continue
+                    if managed is not None and isinstance(evt, StartedEvent):
+                        managed.bind(evt)
+                    if (managed is not None or self.defer_completion) and isinstance(
+                        evt, CompletedEvent
+                    ):
+                        pending_completed = evt
+                        continue
                     yield evt
 
                 rc = await proc.wait()
@@ -682,7 +690,11 @@ class JsonlSubprocessRunner(BaseRunner):
                     pending_completed = replace(
                         pending_completed,
                         ok=False,
-                        error=f"Managed agent exited with code {rc}; check ai-memory capture before retrying.",
+                        error=(
+                            f"Managed agent exited with code {rc}; check ai-memory capture before retrying."
+                            if managed is not None
+                            else f"{self.tag()} failed (rc={rc})."
+                        ),
                     )
                 yield pending_completed
                 return

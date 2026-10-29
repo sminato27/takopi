@@ -222,7 +222,9 @@ def test_progress_renderer_footer_includes_ctx_before_resume() -> None:
     )
     formatter = MarkdownFormatter(max_actions=5)
     parts = formatter.render_progress_parts(state, elapsed_s=0.0)
-    assert parts.footer == (
+    assert parts.footer is not None
+    assert "Modelo:" in parts.footer and "Cotas · 5h:" in parts.footer
+    assert parts.footer.endswith(
         "`ctx: z80 @feat/name`"
         f"{HARD_BREAK}`codex resume 0199a213-81c0-7800-8aa1-bbab2a035a53`"
     )

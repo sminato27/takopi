@@ -51,6 +51,7 @@ class StreamAssistantMessageBody(msgspec.Struct, forbid_unknown_fields=False):
     content: list[StreamContentBlock]
     model: str
     error: str | None = None
+    usage: dict[str, Any] | None = None
 
 
 class StreamUserMessage(
@@ -84,6 +85,7 @@ class StreamSystemMessage(
     permissionMode: str | None = None
     output_style: str | None = None
     apiKeySource: str | None = None
+    effort: str | dict[str, Any] | None = None
 
 
 class StreamResultMessage(
@@ -99,6 +101,17 @@ class StreamResultMessage(
     usage: dict[str, Any] | None = None
     result: str | None = None
     structured_output: Any = None
+    modelUsage: dict[str, Any] | None = None
+
+
+class StreamRateLimitMessage(
+    msgspec.Struct,
+    tag="rate_limit_event",
+    tag_field="type",
+    forbid_unknown_fields=False,
+):
+    rate_limit_info: dict[str, Any]
+    session_id: str | None = None
 
 
 class StreamEventMessage(
@@ -226,6 +239,7 @@ type StreamJsonMessage = (
     | StreamControlRequest
     | StreamControlResponse
     | StreamControlCancelRequest
+    | StreamRateLimitMessage
 )
 
 

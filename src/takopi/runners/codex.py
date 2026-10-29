@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import anyio
+from anyio.to_thread import run_sync
 import msgspec
 
 from ..backends import EngineBackend, EngineConfig
@@ -19,12 +20,20 @@ from ..config import ConfigError
 from ..events import EventFactory
 from ..logging import get_logger
 from ..managed import AiMemoryConfig
-from ..model import ActionPhase, EngineId, ResumeToken, TakopiEvent
+from ..model import (
+    ActionPhase,
+    EngineId,
+    ResumeToken,
+    StartedEvent,
+    TakopiEvent,
+)
 from ..runner import BaseRunner, JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from .run_options import get_run_options
 from ..schemas import codex as codex_schema
 from ..utils.paths import get_run_base_dir, relativize_command
 from ..utils.streams import drain_stderr, iter_bytes_lines
+from ..telemetry import Telemetry, telemetry_event
+from .codex_telemetry import CodexTelemetryReader
 
 logger = get_logger(__name__)
 
@@ -459,6 +468,25 @@ class CodexRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     engine: EngineId = ENGINE
     resume_re = _RESUME_RE
     logger = logger
+    defer_completion = True
+
+    async def run_impl(
+        self, prompt: str, resume: ResumeToken | None
+    ) -> AsyncIterator[TakopiEvent]:
+        reader = CodexTelemetryReader()
+        session = resume
+        last = Telemetry()
+        async for event in super().run_impl(prompt, resume):
+            if isinstance(event, StartedEvent):
+                session = event.resume
+                yield event
+            if session is not None:
+                status = await run_sync(reader.read, session.value)
+                if status != last:
+                    yield telemetry_event(self.engine, status)
+                    last = status
+            if not isinstance(event, StartedEvent):
+                yield event
 
     def __init__(
         self,

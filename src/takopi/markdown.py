@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .telemetry import telemetry_lines
+
 import os
 import textwrap
 from dataclasses import dataclass
@@ -174,7 +176,7 @@ def render_event_cli(event: TakopiEvent) -> list[str]:
             return [str(engine)]
         case ActionEvent() as action_event:
             action = action_event.action
-            if action.kind == "turn":
+            if action.kind in {"turn", "telemetry"}:
                 return []
             return [
                 format_action_line(
@@ -240,6 +242,8 @@ class MarkdownFormatter:
 
     def _format_footer(self, state: ProgressState) -> str | None:
         lines: list[str] = []
+        if state.telemetry is not None:
+            lines.extend(telemetry_lines(state.telemetry))
         if state.context_line:
             lines.append(state.context_line)
         if state.resume_line:

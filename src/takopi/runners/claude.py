@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,7 @@ from ..runner import JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from .run_options import get_run_options
 from ..schemas import claude as claude_schema
 from .tool_actions import tool_input_path, tool_kind_and_title
+from ..telemetry import Quota, Telemetry, number, telemetry_event, token_count
 
 logger = get_logger(__name__)
 
@@ -36,6 +37,7 @@ class ClaudeStreamState:
     pending_actions: dict[str, Action] = field(default_factory=dict)
     last_assistant_text: str | None = None
     note_seq: int = 0
+    telemetry: Telemetry = field(default_factory=Telemetry)
 
 
 def _normalize_tool_result(content: Any) -> str:
@@ -165,6 +167,9 @@ def translate_claude_event(
 ) -> list[TakopiEvent]:
     match event:
         case claude_schema.StreamSystemMessage(subtype=subtype):
+            if subtype == "compact_boundary":
+                state.telemetry = replace(state.telemetry, context_tokens=None)
+                return [telemetry_event(ENGINE, state.telemetry)]
             if subtype != "init":
                 return []
             session_id = event.session_id
@@ -183,6 +188,15 @@ def translate_claude_event(
                 if value is not None:
                     meta[key] = value
             model = event.model
+            effort = event.effort
+            if isinstance(effort, dict):
+                effort = effort.get("level")
+            state.telemetry = replace(
+                state.telemetry,
+                model=model,
+                effort=effort if isinstance(effort, str) else state.telemetry.effort,
+            )
+            meta["telemetry"] = state.telemetry
             token = ResumeToken(engine=ENGINE, value=session_id)
             event_title = str(model) if isinstance(model, str) and model else title
             return [factory.started(token, title=event_title, meta=meta or None)]
@@ -190,6 +204,25 @@ def translate_claude_event(
             message=message, parent_tool_use_id=parent_tool_use_id
         ):
             out: list[TakopiEvent] = []
+            if parent_tool_use_id is None and message.usage is not None:
+                # The last main-agent input includes cached tokens. Summed turn
+                # usage and subagent calls are not the current context window.
+                state.telemetry = replace(
+                    state.telemetry,
+                    model=message.model,
+                    context_tokens=token_count(
+                        message.usage,
+                        (
+                            "input_tokens",
+                            "cache_creation_input_tokens",
+                            "cache_read_input_tokens",
+                        ),
+                    ),
+                    context_window=None
+                    if message.model != state.telemetry.model
+                    else state.telemetry.context_window,
+                )
+                out.append(telemetry_event(ENGINE, state.telemetry))
             for content in message.content:
                 match content:
                     case claude_schema.StreamToolUseBlock():
@@ -257,6 +290,46 @@ def translate_claude_event(
                     )
                 )
             return out
+        case claude_schema.StreamRateLimitMessage(rate_limit_info=info):
+            if (
+                event.session_id
+                and factory.resume
+                and event.session_id != factory.resume.value
+            ):
+                return []
+            windows = info.get("unifiedWindows")
+            if isinstance(windows, dict):
+                for key, field_name in (
+                    ("five_hour", "five_hour"),
+                    ("seven_day", "weekly"),
+                ):
+                    value = windows.get(key)
+                    if not isinstance(value, dict):
+                        continue
+                    utilization = number(value.get("utilization"))
+                    quota = Quota.from_values(
+                        utilization * 100 if utilization is not None else None,
+                        value.get("resetsAt"),
+                    )
+                    state.telemetry = replace(state.telemetry, **{field_name: quota})
+            else:
+                rate_type = info.get("rateLimitType")
+                field_name = (
+                    {"five_hour": "five_hour", "seven_day": "weekly"}.get(rate_type)
+                    if isinstance(rate_type, str)
+                    else None
+                )
+                utilization = number(info.get("utilization"))
+                if field_name and utilization is not None:
+                    state.telemetry = replace(
+                        state.telemetry,
+                        **{
+                            field_name: Quota.from_values(
+                                utilization * 100, info.get("resetsAt")
+                            )
+                        },
+                    )
+            return [telemetry_event(ENGINE, state.telemetry)]
         case claude_schema.StreamResultMessage():
             ok = not event.is_error
             result_text = event.result or ""
@@ -266,15 +339,28 @@ def translate_claude_event(
             resume = ResumeToken(engine=ENGINE, value=event.session_id)
             error = None if ok else _extract_error(event)
             usage = _usage_payload(event)
+            models = event.modelUsage or {}
+            model_usage = models.get(state.telemetry.model or "") or {}
+            window = (
+                number(model_usage.get("contextWindow"))
+                if isinstance(model_usage, dict)
+                else None
+            )
+            if window is not None and window > 0:
+                state.telemetry = replace(state.telemetry, context_window=int(window))
+
+            # Publish separately: a later rate-limit event can update this before
+            # the runner releases the buffered completion.
 
             return [
+                telemetry_event(ENGINE, state.telemetry),
                 factory.completed(
                     ok=ok,
                     answer=result_text,
                     resume=resume,
                     error=error,
                     usage=usage or None,
-                )
+                ),
             ]
         case _:
             return []
@@ -282,6 +368,7 @@ def translate_claude_event(
 
 @dataclass(slots=True)
 class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
+    defer_completion = True
     engine: EngineId = ENGINE
     resume_re: re.Pattern[str] = _RESUME_RE
 
@@ -359,7 +446,21 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
         return None
 
     def new_state(self, prompt: str, resume: ResumeToken | None) -> ClaudeStreamState:
-        return ClaudeStreamState()
+        options = get_run_options()
+        return ClaudeStreamState(
+            telemetry=Telemetry(effort=options.reasoning if options else None)
+        )
+
+    def trailing_events(self, line: bytes, *, state: Any) -> list[TakopiEvent]:
+        try:
+            event = self.decode_jsonl(line=line)
+        except (msgspec.DecodeError, ValueError):
+            return []
+        if isinstance(event, claude_schema.StreamRateLimitMessage):
+            return translate_claude_event(
+                event, title=self.session_title, state=state, factory=state.factory
+            )
+        return []
 
     def start_run(
         self,

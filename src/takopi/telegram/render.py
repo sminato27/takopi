@@ -230,18 +230,34 @@ def trim_body(body: str | None, *, max_chars: int = MAX_BODY_CHARS) -> str | Non
 
 
 def prepare_telegram(parts: MarkdownParts) -> tuple[str, list[dict[str, Any]]]:
+    budget = _body_budget(parts, MAX_BODY_CHARS)
+    body = parts.body
+    if body and any(ord(char) > 0xFFFF for char in body):
+        budget = max(1, budget // 2)
     trimmed = MarkdownParts(
         header=parts.header or "",
-        body=trim_body(parts.body, max_chars=MAX_BODY_CHARS),
+        body=trim_body(body, max_chars=budget),
         footer=parts.footer,
     )
     return render_markdown(assemble_markdown_parts(trimmed))
+
+
+def _body_budget(parts: MarkdownParts, ceiling: int) -> int:
+    # Telegram counts UTF-16 code units. Reserve room for status, context,
+    # resume command, separators and split-message continuation headers.
+    fixed, _ = render_markdown(
+        assemble_markdown_parts(MarkdownParts(header=parts.header, footer=parts.footer))
+    )
+    return max(1, min(ceiling, 4096 - len(fixed.encode("utf-16-le")) // 2 - 80))
 
 
 def prepare_telegram_multi(
     parts: MarkdownParts, *, max_body_chars: int = MAX_BODY_CHARS
 ) -> list[tuple[str, list[dict[str, Any]]]]:
     body = parts.body
+    max_body_chars = _body_budget(parts, max_body_chars)
+    if body and any(ord(char) > 0xFFFF for char in body):
+        max_body_chars = max(1, max_body_chars // 2)
     if body is not None and not body.strip():
         body = None
     body_chunks = split_markdown_body(body, max_body_chars) if body is not None else []

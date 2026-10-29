@@ -70,6 +70,7 @@ def build_help_messages(cfg: TelegramBridgeConfig) -> list[str]:
             "/reasoning — mostra o esforço e os níveis disponíveis; `/reasoning set [AGENTE] NÍVEL` define; `/reasoning clear [AGENTE]` remove a escolha local.",
             "/trigger — mostra quando o bot responde; `/trigger all` aceita mensagens normais; `/trigger mentions` exige menção, resposta ao bot ou comando; `/trigger clear` restaura o padrão.",
             "Essas escolhas valem para o tópico atual; fora de um tópico, valem para o chat. Remover uma escolha local volta a usar o padrão herdado.",
+            "Codex, Claude e Agy mostram modelo, esforço, contexto e cotas de 5h/semanal no rodapé de cada resposta. Percentuais indicam uso; dados ausentes aparecem como indisponíveis. No Agy, o contexto percentual não está disponível neste modo.",
             "",
             "**Contexto e branches**",
             "/ctx — mostra o projeto e a branch; `/ctx set PROJETO [@branch]` altera o vínculo; `/ctx clear` remove o vínculo.",

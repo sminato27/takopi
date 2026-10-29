@@ -3,7 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from collections.abc import Callable
 
-from .model import Action, ActionEvent, ResumeToken, StartedEvent, TakopiEvent
+from .model import (
+    Action,
+    ActionEvent,
+    CompletedEvent,
+    ResumeToken,
+    StartedEvent,
+    TakopiEvent,
+)
+from .telemetry import Telemetry
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +33,7 @@ class ProgressState:
     resume: ResumeToken | None
     resume_line: str | None
     context_line: str | None
+    telemetry: Telemetry | None = None
 
 
 class ProgressTracker:
@@ -34,13 +43,27 @@ class ProgressTracker:
         self.action_count = 0
         self._actions: dict[str, ActionState] = {}
         self._seq = 0
+        self.telemetry = Telemetry() if engine in {"codex", "claude", "agy"} else None
 
     def note_event(self, event: TakopiEvent) -> bool:
         match event:
-            case StartedEvent(resume=resume):
+            case StartedEvent(resume=resume, meta=meta):
                 self.resume = resume
+                if meta and isinstance(meta.get("telemetry"), Telemetry):
+                    self.telemetry = meta["telemetry"]
                 return True
+            case CompletedEvent(usage=usage):
+                if usage and isinstance(usage.get("telemetry"), Telemetry):
+                    self.telemetry = usage["telemetry"]
+                    return True
+                return False
             case ActionEvent(action=action, phase=phase, ok=ok):
+                if action.kind == "telemetry":
+                    status = action.detail.get("telemetry")
+                    if isinstance(status, Telemetry):
+                        self.telemetry = status
+                        return True
+                    return False
                 if action.kind == "turn":
                     return False
                 action_id = str(action.id or "")
@@ -96,4 +119,5 @@ class ProgressTracker:
             resume=self.resume,
             resume_line=resume_line,
             context_line=context_line,
+            telemetry=self.telemetry,
         )

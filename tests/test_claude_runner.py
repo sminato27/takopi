@@ -98,7 +98,11 @@ def test_translate_success_fixture() -> None:
     assert isinstance(events[0], StartedEvent)
     started = next(evt for evt in events if isinstance(evt, StartedEvent))
 
-    action_events = [evt for evt in events if isinstance(evt, ActionEvent)]
+    action_events = [
+        evt
+        for evt in events
+        if isinstance(evt, ActionEvent) and evt.action.kind != "telemetry"
+    ]
     assert len(action_events) == 4
 
     started_actions = {

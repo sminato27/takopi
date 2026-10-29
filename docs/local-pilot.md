@@ -1,3 +1,8 @@
+# Telemetria nas respostas
+
+O rodapé com modelo, esforço, contexto e cotas de 5 horas/semanal está descrito
+em [telegram-status.md](telegram-status.md), incluindo as limitações por agente.
+
 # Expansão para Windows, outro WSL e Antigravity
 
 A expansão de 28/10/2026, incluindo `/new agy`, os 32 projetos e os históricos

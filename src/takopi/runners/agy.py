@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import re
 import shutil
@@ -12,9 +13,11 @@ from ..backends import EngineBackend, EngineConfig
 from ..config import ConfigError
 from ..events import EventFactory
 from ..managed import AiMemoryConfig
-from ..model import ResumeToken, TakopiEvent
+from ..model import CompletedEvent, ResumeToken, TakopiEvent
 from ..runner import JsonlSubprocessRunner, ResumeTokenMixin, Runner
 from .run_options import get_run_options
+from .agy_telemetry import refresh_agy
+from ..telemetry import Telemetry, telemetry_event, token_count
 
 
 @dataclass(slots=True)
@@ -22,10 +25,12 @@ class AgyState:
     factory: EventFactory = field(default_factory=lambda: EventFactory("agy"))
     note_seq: int = 0
     steps: set[int] = field(default_factory=set)
+    telemetry: Telemetry = field(default_factory=Telemetry)
 
 
 @dataclass(slots=True)
 class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
+    defer_completion = True
     engine: str = "agy"
     resume_re: re.Pattern[str] = re.compile(
         r"(?im)^\s*`?agy\s+--conversation\s+(?P<token>[^`\s]+)`?\s*$"
@@ -33,6 +38,25 @@ class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     agy_cmd: str = "agy"
     model: str | None = None
     ai_memory: AiMemoryConfig | None = None
+
+    async def run_impl(
+        self, prompt: str, resume: ResumeToken | None
+    ) -> AsyncIterator[TakopiEvent]:
+        async for event in super().run_impl(prompt, resume):
+            if isinstance(event, CompletedEvent) and event.resume is not None:
+                status = (event.usage or {}).get("telemetry", Telemetry())
+                options = get_run_options()
+                status = await refresh_agy(
+                    status,
+                    executable=self.agy_cmd,
+                    session=event.resume.value,
+                    model=(options.model if options else None) or self.model,
+                    effort=options.reasoning if options else None,
+                )
+                event = replace(
+                    event, usage={**(event.usage or {}), "telemetry": status}
+                )
+            yield event
 
     def command(self) -> str:
         return self.agy_cmd
@@ -43,7 +67,13 @@ class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
         return f"`agy --conversation {token.value}`"
 
     def new_state(self, prompt: str, resume: ResumeToken | None) -> AgyState:
-        return AgyState()
+        options = get_run_options()
+        return AgyState(
+            telemetry=Telemetry(
+                model=(options.model if options else None) or self.model,
+                effort=options.reasoning if options else None,
+            )
+        )
 
     def build_args(
         self, prompt: str, resume: ResumeToken | None, *, state: Any
@@ -82,6 +112,9 @@ class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
             if not isinstance(sid, str) or not sid:
                 return []
             meta = data.get("init", {})
+            if isinstance(meta.get("model"), str):
+                state.telemetry = replace(state.telemetry, model=meta["model"])
+            meta = {**meta, "telemetry": state.telemetry}
             return [
                 state.factory.started(
                     ResumeToken("agy", sid), title="Antigravity", meta=meta
@@ -90,6 +123,15 @@ class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
         if event == "step_update":
             step = data.get("step_update", {})
             kind, index = step.get("step_type"), step.get("step_index")
+            if kind == "agent_response" and isinstance(step.get("usage"), dict):
+                state.telemetry = replace(
+                    state.telemetry,
+                    last_call_tokens=token_count(
+                        step["usage"],
+                        ("input_tokens", "cache_read_tokens", "output_tokens"),
+                    ),
+                )
+                return [telemetry_event(self.engine, state.telemetry)]
             if kind in {
                 "user_input",
                 "system_message",
@@ -119,6 +161,7 @@ class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
             return []
         if event == "result":
             result = data.get("result", {})
+            usage = result.get("usage")
             sid = result.get("conversation_id")
             token = ResumeToken("agy", sid) if isinstance(sid, str) and sid else None
             expected = state.factory.resume or resume
@@ -138,7 +181,10 @@ class AgyRunner(ResumeTokenMixin, JsonlSubprocessRunner):
                     answer=str(result.get("response") or ""),
                     resume=expected,
                     error=error,
-                    usage=result.get("usage"),
+                    usage={
+                        **(usage if isinstance(usage, dict) else {}),
+                        "telemetry": state.telemetry,
+                    },
                 )
             ]
         return []
