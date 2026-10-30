@@ -7,7 +7,7 @@ import pytest
 from takopi.config import ProjectConfig, ProjectsConfig
 from takopi.router import AutoRouter, RunnerEntry
 from takopi.runners.mock import Return, ScriptRunner
-from takopi.settings import TelegramTopicsSettings
+from takopi.settings import TelegramFilesSettings, TelegramTopicsSettings
 from takopi.telegram.commands.help import build_help_messages
 from takopi.telegram.commands.menu import build_bot_commands
 from takopi.telegram.loop import run_main_loop
@@ -82,6 +82,22 @@ def test_help_describes_disabled_features_and_legacy_new_behavior(tmp_path):
     assert "/resume AGENTE" not in text
     assert "/topic PROJETO" not in text
     assert "/stop" not in text
+
+
+@pytest.mark.parametrize("mode", ["prompt", "upload"])
+@pytest.mark.parametrize("auto_put", [True, False])
+def test_help_explains_caption_upload_only_when_enabled(tmp_path, mode, auto_put):
+    cfg, _, _ = help_config(tmp_path)
+    cfg = replace(
+        cfg,
+        files=TelegramFilesSettings(
+            enabled=True, auto_put=auto_put, auto_put_mode=mode
+        ),
+    )
+    text = "\n".join(build_help_messages(cfg))
+    assert ("tarefa na legenda" in text) == (auto_put and mode == "prompt")
+    assert ("Sem legenda" in text) == auto_put
+    assert "/file put CAMINHO" in text
 
 
 @pytest.mark.anyio

@@ -1,3 +1,25 @@
+# Anexos com legenda
+
+A instalação local recebe arquivos e fotos com a tarefa na legenda para Codex,
+Claude e Agy. O anexo fica em `incoming/` no projeto da conversa; o agente recebe
+a legenda e o caminho para ler com suas ferramentas. Álbuns geram uma única
+tarefa; anexos sem legenda são apenas salvos. O limite é 20 MiB por arquivo.
+
+O gerador `scripts/configure_local.py` habilita `files.enabled`, `files.auto_put`
+e `files.auto_put_mode = "prompt"`, com acesso restrito ao dono configurado.
+Instalações existentes precisam dessas mesmas opções e de reinício do bot.
+Detalhes e limites em [file-transfer.md](how-to/file-transfer.md).
+
+Validação em 30/10/2026: **672 testes passaram**, cobertura **82,37%**; Ruff
+aprovado e Ty sem erros, com cinco avisos preexistentes. Os testes de anexos
+verificam legenda, álbum, retomada da sessão e diretório do tópico nos três
+agentes, além do envio sem legenda e do aviso de recurso desativado.
+Em três chamadas reais pelo ai-memory, Codex, Claude e Agy leram arquivos de
+teste a partir dos caminhos recebidos no prompt e devolveram corretamente o
+conteúdo. Evidência privada: `~/.local/share/takopi-test-project/validation/attachment-results.json`.
+O download/roteamento do Telegram foi testado com API simulada; o envio real
+pelo usuário deve ser repetido depois da ativação.
+
 # Telemetria nas respostas
 
 O rodapé com modelo, esforço, contexto e cotas de 5 horas/semanal está descrito
@@ -85,7 +107,9 @@ Claude informa seu modo efetivo no evento inicial; o adaptador interrompe a exec
 - Com `topics.import_native_sessions = true`, `/sessions` inclui o índice e os rollouts do Codex e os históricos de `~/.claude/projects`. Não há anexação a um CLI que esteja executando no terminal: a adoção/retomada é bloqueada conservadoramente quando há um processo nativo no mesmo diretório. Encerre o CLI no terminal antes de alternar para o Telegram.
 - O envio da inicialização e o menu foram confirmados pela API real do Telegram. A validação de conversas iniciadas por mensagens do usuário no grupo é uma etapa separada dos testes locais.
 - O Takopi descarta mensagens acumuladas enquanto estava desligado ao iniciar. Isso evita executar tarefas antigas automaticamente; reenvie a tarefa desejada após o aviso de inicialização.
-- Áudio e transferência de arquivos ficam desativados no piloto. Regras/skills/MCPs continuam sendo os dos CLIs.
+- Áudio permanece desativado. Anexos com legenda foram habilitados em 30/10/2026,
+  conforme a seção no início deste documento. Regras/skills/MCPs continuam sendo
+  os dos CLIs.
 - `plugins.enabled = ["takopi"]` autoriza a distribuição Python que fornece os plugins. `enabled_engines = ["codex", "claude"]` limita os executores disponíveis, mesmo que outros CLIs estejam instalados. O transporte é Telegram. Sem `enabled_engines`, o comportamento upstream de descobrir todos os executores continua disponível; valores desconhecidos ou exclusão do agente padrão são rejeitados.
 - Para voltar ao uso normal dos CLIs, basta parar o serviço. Nenhuma configuração global dos agentes foi substituída.
 

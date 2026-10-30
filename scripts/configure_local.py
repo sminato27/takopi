@@ -130,7 +130,13 @@ def main() -> None:
                     "session_topics": True,
                     "import_native_sessions": True,
                 },
-                "files": {"enabled": False},
+                "files": {
+                    "enabled": True,
+                    "auto_put": True,
+                    "auto_put_mode": "prompt",
+                    "uploads_dir": "incoming",
+                    "allowed_user_ids": [args.owner_id],
+                },
             }
         },
     }

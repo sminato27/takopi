@@ -1809,6 +1809,13 @@ async def run_main_loop(
                         tg.start_soon(
                             partial(reply, text=FILE_PUT_USAGE),
                         )
+                    else:
+                        tg.start_soon(
+                            partial(
+                                reply,
+                                text="O recebimento de arquivos está desativado nesta instalação.",
+                            ),
+                        )
                     return
                 if command_id is not None and command_id not in state.reserved_commands:
                     if command_id not in state.command_ids:

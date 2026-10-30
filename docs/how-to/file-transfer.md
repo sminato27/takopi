@@ -32,6 +32,31 @@ Notes:
 - File transfer is **disabled by default**.
 - If `allowed_user_ids` is empty, private chats are allowed and group usage requires admin privileges.
 
+## Use an attachment as a prompt
+
+Set `enabled = true`, `auto_put = true`, and `auto_put_mode = "prompt"` under
+`[transports.telegram.files]`, then restart Takopi. Transport settings require a
+restart even when config watching is enabled. The local setup script
+(`scripts/configure_local.py`) enables this mode and restricts file transfer to
+the configured owner.
+
+Attach a document or photo and put your request in its caption, for example:
+"Read the attached report and summarize the pending tasks."
+
+Takopi saves the attachment under `incoming/` in the conversation's project or
+worktree, then sends the caption and saved file path to that conversation's
+agent. Codex, Claude and Agy use their file-reading tools to access it; the
+bridge does not embed or extract the file's contents into the prompt. Supported
+formats depend on the agent's tools. Photos use the largest version provided by
+Telegram; send an image as a document to preserve the original file.
+
+Albums send one task with the caption and all successfully saved file paths.
+Without a caption, attachments are saved without starting an agent. Uploads are
+limited to **20 MiB per file**. Existing filenames are not overwritten: rename
+the attachment, or explicitly use `/file put --force incoming/filename` and then
+send the task in a separate message. Files denied by path rules or user
+permissions are rejected before invoking an agent.
+
 ## Upload a file (`/file put`)
 
 Send a document with a caption:

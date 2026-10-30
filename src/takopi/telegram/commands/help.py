@@ -82,6 +82,14 @@ def build_help_messages(cfg: TelegramBridgeConfig) -> list[str]:
             "/topic PROJETO @branch — cria ou reutiliza um tópico associado à branch. A tarefa roda em uma área Git separada (worktree)."
         )
     if cfg.files.enabled:
+        if cfg.files.auto_put:
+            if cfg.files.auto_put_mode == "prompt":
+                lines.append(
+                    "Anexe um arquivo ou foto e escreva a tarefa na legenda: o agente da conversa recebe a legenda e o caminho do anexo salvo no projeto. Álbuns usam uma única tarefa."
+                )
+            lines.append(
+                "Sem legenda, o anexo é apenas salvo no projeto. Limite por anexo: 20 MiB."
+            )
         lines.extend(
             [
                 "/file put CAMINHO — envie um documento com esse comando na legenda, ou responda ao documento, para salvá-lo no projeto.",

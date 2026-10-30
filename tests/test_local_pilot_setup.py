@@ -76,6 +76,9 @@ def test_configured_pilot_loads_and_preserves_existing_config(
     assert settings.transports.telegram is not None
     assert settings.transports.telegram.allowed_user_ids == [42]
     assert settings.transports.telegram.topics.session_topics
+    files = settings.transports.telegram.files
+    assert files.enabled and files.auto_put and files.auto_put_mode == "prompt"
+    assert files.allowed_user_ids == [42]
     # Exercise the installed entry points and actual runtime, not just TOML parsing.
     # Plugin allowlists contain distribution names; engine IDs are a separate setting.
     monkeypatch.setattr("shutil.which", lambda _cmd: "/bin/echo")
