@@ -261,7 +261,7 @@ def translate_claude_event(
                             )
                         )
                     case claude_schema.StreamTextBlock(text=text):
-                        if text:
+                        if text and parent_tool_use_id is None:
                             state.last_assistant_text = text
                     case _:
                         continue
@@ -331,13 +331,29 @@ def translate_claude_event(
                     )
             return [telemetry_event(ENGINE, state.telemetry)]
         case claude_schema.StreamResultMessage():
+            # Resume can first report an empty, zero-turn success for an old
+            # background task. It is not the result of the incoming prompt:
+            # https://github.com/anthropics/claude-agent-sdk-python/issues/1463
+            if (
+                not event.is_error
+                and event.num_turns == 0
+                and not (event.result or "").strip()
+                and event.structured_output is None
+            ):
+                return []
             ok = not event.is_error
             result_text = event.result or ""
-            if ok and not result_text and state.last_assistant_text:
+            if ok and not result_text.strip() and state.last_assistant_text:
                 result_text = state.last_assistant_text
 
             resume = ResumeToken(engine=ENGINE, value=event.session_id)
             error = None if ok else _extract_error(event)
+            if ok and not result_text.strip():
+                ok = False
+                error = (
+                    "Claude terminou sem uma resposta para esta mensagem. "
+                    "Confira a sessão antes de reenviar: pode ter havido trabalho e consumo de cota."
+                )
             usage = _usage_payload(event)
             models = event.modelUsage or {}
             model_usage = models.get(state.telemetry.model or "") or {}
@@ -369,6 +385,7 @@ def translate_claude_event(
 @dataclass(slots=True)
 class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     defer_completion = True
+    allow_intermediate_results = True
     engine: EngineId = ENGINE
     resume_re: re.Pattern[str] = _RESUME_RE
 
@@ -438,29 +455,21 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
             return prompt.encode("utf-8")
         return None
 
-    def env(self, *, state: Any) -> dict[str, str] | None:
+    def env(self, *, state: Any) -> dict[str, str]:
+        env = dict(os.environ)
+        # Print mode otherwise stops background agents after ten idle minutes,
+        # even when they are still working. The Telegram task remains cancellable.
+        # Respect an explicit operator ceiling without changing global settings.
+        env.setdefault("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "0")
         if self.use_api_billing is not True:
-            env = dict(os.environ)
             env.pop("ANTHROPIC_API_KEY", None)
-            return env
-        return None
+        return env
 
     def new_state(self, prompt: str, resume: ResumeToken | None) -> ClaudeStreamState:
         options = get_run_options()
         return ClaudeStreamState(
             telemetry=Telemetry(effort=options.reasoning if options else None)
         )
-
-    def trailing_events(self, line: bytes, *, state: Any) -> list[TakopiEvent]:
-        try:
-            event = self.decode_jsonl(line=line)
-        except (msgspec.DecodeError, ValueError):
-            return []
-        if isinstance(event, claude_schema.StreamRateLimitMessage):
-            return translate_claude_event(
-                event, title=self.session_title, state=state, factory=state.factory
-            )
-        return []
 
     def start_run(
         self,

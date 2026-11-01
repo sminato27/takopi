@@ -141,8 +141,16 @@ The terminal event looks like:
 - `error = event.error` (if present)
 - `resume = ResumeToken(engine="claude", value=event.session_id)`
 - `usage = event.usage` (pass through)
-- Emit exactly one `completed` event; ignore any trailing JSON lines afterward.
-  No idle-timeout completion is used.
+- Keep reading after intermediate results while background work runs. Emit
+  exactly one `completed` event at subprocess exit with the latest substantive
+  result, after all progress and telemetry events.
+- Ignore empty successful zero-turn results without structured output: Claude
+  can emit these for interrupted background tasks when resuming, before it
+  processes the new prompt. A fallback answer uses only main-assistant text.
+  Missing answers produce an explanatory error, not an empty successful result.
+- No idle-timeout completion is used. The child environment defaults
+  `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` to keep Claude from stopping background
+  agents after ten idle minutes; explicit operator values are preserved.
 
 #### Permission denials
 `result.permission_denials` may contain tool calls that were blocked. Emit a

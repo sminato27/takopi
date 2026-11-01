@@ -1,3 +1,28 @@
+# Claude: retomada de tarefas em segundo plano
+
+Em 01/11/2026, uma sessão do llamp trabalhou e consumiu cota, mas recebeu `error`
+sem texto no Telegram. O adapter parava de interpretar a saída no primeiro
+`result`, inclusive um resultado vazio com zero turnos que o Claude pode emitir
+ao retomar tarefas interrompidas. A correção ignora esses resultados vazios,
+acompanha progresso e telemetria até o fim do processo e entrega a última
+resposta válida. Erros posteriores continuam sendo apresentados.
+
+O processo do Claude agora recebe `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` quando
+a variável não foi explicitamente configurada. Isso remove o corte padrão de
+dez minutos de espera por agentes auxiliares no modo `-p`. Uma tarefa longa
+pode continuar consumindo cota enquanto trabalha; `/stop` continua disponível.
+A mudança vale para as execuções do Takopi e requer reinício do bot.
+
+Referências: [comportamento no modo headless](https://code.claude.com/docs/en/headless#background-tasks-at-exit)
+e [resultado vazio na retomada](https://github.com/anthropics/claude-agent-sdk-python/issues/1463).
+
+Validação: **681 testes passaram**, cobertura **82,41%**; Ruff aprovado e Ty
+sem erros, mantendo cinco avisos preexistentes. Os testes reproduziram a falha
+antes da correção e cobrem múltiplos resultados, progresso após resultado
+intermediário, cotas, erro posterior, finalização do launcher e cancelamento.
+São testes com subprocessos simulados, sem chamadas ao Claude ou retomada da
+sessão de trabalho do llamp.
+
 # Anexos com legenda
 
 A instalação local recebe arquivos e fotos com a tarefa na legenda para Codex,

@@ -247,7 +247,7 @@ This mirrors CodexRunner’s “started → completed” item tracking and rende
 
 **CompletedEvent**
 
-* Emit on `result` message:
+* Buffer each substantive `result` message until the subprocess exits:
 
   * `ok = (is_error == false)` (treat `is_error` as authoritative; `subtype` is informational)
   * `answer = result` on success; on error, a concise message using `errors` and/or denials
@@ -255,8 +255,14 @@ This mirrors CodexRunner’s “started → completed” item tracking and rende
 
     * `total_cost_usd`, `usage`, `modelUsage`, `duration_ms`, `duration_api_ms`, `num_turns` ([Claude Code][3])
   * Always include `resume` (same session_id).
-* Emit exactly one completed event per run. After emitting it, ignore any
-  trailing JSON lines (do not emit a second completion).
+* Continue parsing progress, telemetry and results after intermediate results:
+  background work can start more turns in the same process. Emit exactly one
+  completed event at process exit, using the latest substantive result.
+* Ignore empty successful results with zero turns and no structured output.
+  On resume these can describe an old background task before the incoming
+  prompt has run ([upstream report](https://github.com/anthropics/claude-agent-sdk-python/issues/1463)).
+* An empty final result falls back to the main assistant's latest text, never
+  a subagent's text. If neither is available, return an explanatory error.
 * We do not use an idle-timeout completion; completion is driven by Claude’s
   `result` event or process exit handling.
 
@@ -295,6 +301,14 @@ Reuse the existing subprocess lifecycle pattern (like `CodexRunner.manage_subpro
 * Kill the process group on cancellation
 * Drain stderr concurrently (log-only)
 * Ensure locks release in `finally`
+
+The runner defaults `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS` to `0` in its child
+environment, preserving an explicitly configured value. Claude's default
+headless mode stops remaining background agents after ten idle minutes;
+`0` waits for them to finish ([official reference](https://code.claude.com/docs/en/env-vars#variables)).
+This changes only launches through Takopi, not global Claude settings. The run
+can therefore stay open for long background work; `/stop` or cancellation still
+terminates its process group. No automatic model retry is added.
 
 ## Documentation updates
 

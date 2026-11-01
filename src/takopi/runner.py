@@ -144,6 +144,9 @@ class JsonlStreamState:
 class JsonlSubprocessRunner(BaseRunner):
     ai_memory: AiMemoryConfig | None = None
     defer_completion: bool = False
+    # Some headless CLIs emit a result per turn while background work continues.
+    # Keep processing their stream; run_impl publishes only the last result at exit.
+    allow_intermediate_results: bool = False
 
     def trailing_events(self, line: bytes, *, state: Any) -> list[TakopiEvent]:
         """Optional telemetry after a result, while completion is still buffered."""
@@ -530,7 +533,9 @@ class JsonlSubprocessRunner(BaseRunner):
         logger: Any,
         pid: int,
     ) -> list[TakopiEvent]:
-        if stream.did_emit_completed:
+        if stream.did_emit_completed and not (
+            self.defer_completion and self.allow_intermediate_results
+        ):
             if self.defer_completion:
                 return self.trailing_events(raw_line, state=state)
             if not stream.ignored_after_completed:
