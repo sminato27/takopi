@@ -22,7 +22,11 @@ def main() -> None:
         raise SystemExit(
             "Set allowed_user_ids to your numeric Telegram user ID before starting."
         )
-    if any(config.get(engine, {}).get("ai_memory") is not True for engine in engines):
+    if any(
+        config.get(engine, {}).get("ai_memory") is not True
+        for engine in engines
+        if engine != "kiro"
+    ):
         raise SystemExit("All enabled agents must use ai_memory = true.")
     if (
         "agy" in engines
