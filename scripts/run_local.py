@@ -14,8 +14,8 @@ def main() -> None:
         )
     config = tomllib.loads(path.read_text())
     engines = set(config.get("enabled_engines", []))
-    if not {"codex", "claude"} <= engines <= {"codex", "claude", "agy"}:
-        raise SystemExit("Enable codex and claude, with optional agy.")
+    if not {"codex", "claude"} <= engines <= {"codex", "claude", "agy", "kiro"}:
+        raise SystemExit("Enable codex and claude, with optional agy or kiro.")
     telegram = config.get("transports", {}).get("telegram", {})
     owners = telegram.get("allowed_user_ids", [])
     if not owners or any(type(owner) is not int or owner <= 0 for owner in owners):
