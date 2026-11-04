@@ -43,7 +43,9 @@ class ProgressTracker:
         self.action_count = 0
         self._actions: dict[str, ActionState] = {}
         self._seq = 0
-        self.telemetry = Telemetry() if engine in {"codex", "claude", "agy"} else None
+        self.telemetry = (
+            Telemetry() if engine in {"codex", "claude", "agy", "kiro"} else None
+        )
 
     def note_event(self, event: TakopiEvent) -> bool:
         match event:

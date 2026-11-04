@@ -58,7 +58,7 @@ async def upload_config(tmp_path: Path, engine: str):
     config_path = tmp_path / "takopi.toml"
     runners = {
         name: ScriptRunner([Return(answer="ok")], engine=name)
-        for name in ("codex", "claude", "agy")
+        for name in ("codex", "claude", "agy", "kiro")
     }
     runtime = TransportRuntime(
         router=AutoRouter(
@@ -99,7 +99,7 @@ async def upload_config(tmp_path: Path, engine: str):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("engine", ["codex", "claude", "agy"])
+@pytest.mark.parametrize("engine", ["codex", "claude", "agy", "kiro"])
 @pytest.mark.parametrize("album", [False, True])
 async def test_caption_upload_resumes_topic_agent_and_saves_in_its_project(
     tmp_path, engine, album

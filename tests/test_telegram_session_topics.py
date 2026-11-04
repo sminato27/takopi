@@ -38,7 +38,7 @@ def session_setup(tmp_path):
     router = AutoRouter(
         entries=[
             RunnerEntry(engine=e, runner=ScriptRunner([Return(answer="ok")], engine=e))
-            for e in ["codex", "claude", "agy"]
+            for e in ["codex", "claude", "agy", "kiro"]
         ],
         default_engine="codex",
     )
@@ -87,6 +87,7 @@ async def test_new_selector_then_project_then_independent_topics(session_setup):
         "session:new:codex",
         "session:new:claude",
         "session:new:agy",
+        "session:new:kiro",
     ]
     await create_session(cfg, msg, "claude", store)
     assert "projeto" in transport.send_calls[-1]["message"].text
@@ -108,13 +109,14 @@ async def test_new_selector_then_project_then_independent_topics(session_setup):
 
 
 @pytest.mark.anyio
-async def test_agy_topic_and_filtered_session_list(session_setup):
+@pytest.mark.parametrize("engine", ["agy", "kiro"])
+async def test_additional_engine_topic_and_filtered_session_list(session_setup, engine):
     cfg, msg, store, transport, bot = session_setup
-    await create_session(cfg, msg, "agy test migração", store)
+    await create_session(cfg, msg, f"{engine} test migração", store)
     thread = await store.get_thread(msg.chat_id, 101)
-    assert thread.default_engine == "agy"
-    await store.set_session_resume(msg.chat_id, 101, ResumeToken("agy", "sid"))
-    await list_sessions(cfg, msg, "agy", store)
+    assert thread.default_engine == engine
+    await store.set_session_resume(msg.chat_id, 101, ResumeToken(engine, "sid"))
+    await list_sessions(cfg, msg, engine, store)
     assert "Sessões (1)" in transport.send_calls[-1]["message"].text
 
 

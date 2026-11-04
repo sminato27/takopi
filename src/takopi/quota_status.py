@@ -28,7 +28,7 @@ logger = get_logger(__name__)
 STATE_VERSION = 1
 STATE_FILENAME = "quota_status_state.json"
 
-QUOTA_ENGINES = ("claude", "codex", "agy")
+QUOTA_ENGINES = ("claude", "codex", "agy", "kiro")
 # Agy's model families, as labelled by runners/agy_telemetry.py; the others
 # have one quota. An agent is out only when all of its groups are.
 QUOTA_GROUPS = {"claude": ("",), "codex": ("",), "agy": ("Gemini", "Claude/GPT")}
@@ -36,7 +36,7 @@ AVAILABLE = "DISPONÍVEL"
 UNAVAILABLE = "INDISPONÍVEL"
 NO_DATA = "SEM DADOS"
 
-_TITLES = {"claude": "Claude", "codex": "Codex", "agy": "Agy"}
+_TITLES = {"claude": "Claude", "codex": "Codex", "agy": "Agy", "kiro": "Kiro"}
 # Agy's failure text is not a reliable quota signal; its windows are.
 _ERROR_TEXT_ENGINES = frozenset({"claude", "codex"})
 _FIVE_HOURS = 5 * 3600
@@ -427,7 +427,11 @@ def _engine_lines(view: QuotaView, now: float) -> list[str]:
     for group in view.groups:
         lines.extend(_group_lines(group, now))
     if status.label == NO_DATA:
-        lines.append("Nenhuma resposta pelo bot registrou cotas ainda.")
+        lines.append(
+            "O Kiro não informa janelas de 5h/semanal neste modo."
+            if view.engine == "kiro"
+            else "Nenhuma resposta pelo bot registrou cotas ainda."
+        )
     return lines
 
 

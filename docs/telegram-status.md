@@ -2,6 +2,8 @@
 
 Codex, Claude e Antigravity mostram automaticamente um rodapé nas respostas do
 Telegram. Não é necessário habilitar uma opção nem enviar um comando de consulta.
+O Kiro também mostra modelo, esforço e percentual de contexto; suas cotas de
+5h/semanal não são informadas pelo CLI. Veja [Kiro](how-to/kiro.md).
 
 ```text
 Modelo: gpt-6-astra · Effort: xhigh

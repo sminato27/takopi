@@ -884,6 +884,18 @@ async def test_cotas_replies_once_without_running_an_agent(
 
 
 @pytest.mark.anyio
+async def test_cotas_reports_kiro_limits_as_unavailable_without_running_it(
+    tmp_path, monkeypatch
+):
+    cfg, transport, _, entries, _ = _quota_config(tmp_path, monkeypatch, ("kiro",))
+    await _send(cfg, "/cotas")
+    text = transport.send_calls[-1]["message"].text
+    assert "Kiro — SEM DADOS" in text
+    assert "não informa janelas de 5h/semanal" in text
+    assert not any(entry.runner.calls for entry in entries)
+
+
+@pytest.mark.anyio
 async def test_cotas_names_unconfigured_engines_and_skips_their_refresh(
     tmp_path, monkeypatch
 ):

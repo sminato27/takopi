@@ -164,6 +164,7 @@ def native_directory_busy(cwd: Path) -> bool:
                 "codex",
                 "claude",
                 "agy",
+                "kiro-cli",
             }:
                 continue
             if same_directory(proc / "cwd", cwd):

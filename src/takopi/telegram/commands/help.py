@@ -71,6 +71,7 @@ def build_help_messages(cfg: TelegramBridgeConfig) -> list[str]:
             "/trigger — mostra quando o bot responde; `/trigger all` aceita mensagens normais; `/trigger mentions` exige menção, resposta ao bot ou comando; `/trigger clear` restaura o padrão.",
             "Essas escolhas valem para o tópico atual; fora de um tópico, valem para o chat. Remover uma escolha local volta a usar o padrão herdado.",
             "/cotas — mostra, por agente, a cota de 5h e semanal, quando renova e se está disponível; /quota funciona igual.",
+            "Kiro: use `/new kiro PROJETO` ou `/kiro`. Modelo, esforço e contexto aparecem no rodapé; as janelas de cota de 5h/semanal não são informadas pelo Kiro neste modo.",
             "Codex, Claude e Agy mostram modelo, esforço, contexto e cotas de 5h/semanal no rodapé de cada resposta; /cotas reúne os últimos valores salvos sem iniciar uma tarefa. Percentuais indicam uso; dados ausentes aparecem como indisponíveis. No Agy, o contexto percentual não está disponível neste modo.",
             "",
             "**Contexto e branches**",

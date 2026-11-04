@@ -69,7 +69,9 @@ async def create_session(
         return
     args = split_command_args(args_text)
     engines = tuple(
-        e for e in cfg.runtime.available_engine_ids() if e in {"codex", "claude", "agy"}
+        e
+        for e in cfg.runtime.available_engine_ids()
+        if e in {"codex", "claude", "agy", "kiro"}
     )
     if not args:
         await _choose(
@@ -166,7 +168,12 @@ async def list_sessions(
 ) -> None:
     reply = make_reply(cfg, msg)
     args = split_command_args(args_text)
-    engines = set(cfg.runtime.available_engine_ids()) & {"codex", "claude", "agy"}
+    engines = set(cfg.runtime.available_engine_ids()) & {
+        "codex",
+        "claude",
+        "agy",
+        "kiro",
+    }
     if len(args) > 2 or (args and args[0] not in engines | {"all"}):
         await reply(text=f"Use /sessions [{'|'.join(sorted(engines))}|all] [página].")
         return
@@ -249,7 +256,8 @@ async def resume_native(
         not cfg.topics.import_native_sessions
         or len(args) != 2
         or args[0]
-        not in set(cfg.runtime.available_engine_ids()) & {"codex", "claude", "agy"}
+        not in set(cfg.runtime.available_engine_ids())
+        & {"codex", "claude", "agy", "kiro"}
     ):
         await reply(text="Use /resume AGENTE ID, conforme /sessions.")
         return

@@ -1,5 +1,7 @@
 # Claude: retomada de tarefas em segundo plano
 
+A integração do Kiro no WSL está descrita em [kiro.md](how-to/kiro.md).
+
 Em 01/11/2026, uma sessão do llamp trabalhou e consumiu cota, mas recebeu `error`
 sem texto no Telegram. O adapter parava de interpretar a saída no primeiro
 `result`, inclusive um resultado vazio com zero turnos que o Claude pode emitir

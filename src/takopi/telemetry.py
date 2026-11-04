@@ -54,6 +54,7 @@ class Telemetry:
     quota_group: str | None = None
     # The provider's own verdict; None when it reported none.
     limited: bool | None = None
+    context_percent: float | None = None
 
 
 def telemetry_event(engine: str, status: Telemetry) -> ActionEvent:
@@ -110,6 +111,8 @@ def telemetry_lines(status: Telemetry, *, now: float | None = None) -> list[str]
         context = (
             f"{100 * tokens / window:.0f}% usado ({_tokens(tokens)}/{_tokens(window)})"
         )
+    elif status.context_percent is not None:
+        context = f"{status.context_percent:.0f}% usado"
     elif tokens is not None:
         context = f"{_tokens(tokens)} tokens · capacidade indisponível"
     else:
