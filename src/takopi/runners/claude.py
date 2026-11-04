@@ -36,6 +36,7 @@ class ClaudeStreamState:
     factory: EventFactory = field(default_factory=lambda: EventFactory(ENGINE))
     pending_actions: dict[str, Action] = field(default_factory=dict)
     last_assistant_text: str | None = None
+    last_ok_answer: str | None = None
     note_seq: int = 0
     telemetry: Telemetry = field(default_factory=Telemetry)
 
@@ -311,6 +312,13 @@ def translate_claude_event(
                         utilization * 100 if utilization is not None else None,
                         value.get("resetsAt"),
                     )
+                    if (
+                        quota is None
+                        and utilization
+                        and value.get("status") == "rejected"
+                    ):
+                        # Past 100% the window is exhausted; keep its own reset.
+                        quota = Quota(100.0, number(value.get("resetsAt")))
                     state.telemetry = replace(state.telemetry, **{field_name: quota})
             else:
                 rate_type = info.get("rateLimitType")
@@ -321,14 +329,22 @@ def translate_claude_event(
                 )
                 utilization = number(info.get("utilization"))
                 if field_name and utilization is not None:
-                    state.telemetry = replace(
-                        state.telemetry,
-                        **{
-                            field_name: Quota.from_values(
-                                utilization * 100, info.get("resetsAt")
-                            )
-                        },
-                    )
+                    quota = Quota.from_values(utilization * 100, info.get("resetsAt"))
+                    if quota is None and info.get("status") == "rejected":
+                        quota = Quota(100.0, number(info.get("resetsAt")))
+                    state.telemetry = replace(state.telemetry, **{field_name: quota})
+            # Read the verdict apart from utilization: above 100% it has no Quota.
+            statuses = [info.get("status")]
+            if isinstance(windows, dict):
+                statuses.extend(
+                    value.get("status")
+                    for value in windows.values()
+                    if isinstance(value, dict)
+                )
+            if "rejected" in statuses:
+                state.telemetry = replace(state.telemetry, limited=True)
+            elif "allowed" in statuses or "allowed_warning" in statuses:
+                state.telemetry = replace(state.telemetry, limited=False)
             return [telemetry_event(ENGINE, state.telemetry)]
         case claude_schema.StreamResultMessage():
             # Resume can first report an empty, zero-turn success for an old
@@ -343,8 +359,10 @@ def translate_claude_event(
                 return []
             ok = not event.is_error
             result_text = event.result or ""
-            if ok and not result_text.strip() and state.last_assistant_text:
-                result_text = state.last_assistant_text
+            if ok and not result_text.strip():
+                # An empty result, e.g. from a background turn, keeps the latest
+                # real answer instead of becoming the missing-answer error.
+                result_text = state.last_assistant_text or state.last_ok_answer or ""
 
             resume = ResumeToken(engine=ENGINE, value=event.session_id)
             error = None if ok else _extract_error(event)
@@ -354,6 +372,12 @@ def translate_claude_event(
                     "Claude terminou sem uma resposta para esta mensagem. "
                     "Confira a sessão antes de reenviar: pode ter havido trabalho e consumo de cota."
                 )
+            if ok:
+                state.last_ok_answer = result_text
+            elif event.is_error:
+                # `error` already carries the result text. The answer keeps only a
+                # real one, such as an earlier turn's before a usage limit.
+                result_text = state.last_ok_answer or ""
             usage = _usage_payload(event)
             models = event.modelUsage or {}
             model_usage = models.get(state.telemetry.model or "") or {}
@@ -458,9 +482,11 @@ class ClaudeRunner(ResumeTokenMixin, JsonlSubprocessRunner):
     def env(self, *, state: Any) -> dict[str, str]:
         env = dict(os.environ)
         # Print mode otherwise stops background agents after ten idle minutes,
-        # even when they are still working. The Telegram task remains cancellable.
+        # even when they are still working; allow 60. `0` would wait forever, so
+        # a shell or monitor that never ends would hold the session lock and keep
+        # spending quota. The Telegram task remains cancellable.
         # Respect an explicit operator ceiling without changing global settings.
-        env.setdefault("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "0")
+        env.setdefault("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", "3600000")
         if self.use_api_billing is not True:
             env.pop("ANTHROPIC_API_KEY", None)
         return env

@@ -13,9 +13,14 @@ import anyio
 import pytest
 
 from takopi.managed import AiMemoryConfig
+from takopi.markdown import MarkdownPresenter
 from takopi.model import ActionEvent, CompletedEvent, ResumeToken, StartedEvent
 from takopi.progress import ProgressTracker
+from takopi.runner_bridge import ExecBridgeConfig, IncomingMessage, handle_message
 from takopi.runners.claude import ClaudeRunner
+from tests.telegram_fakes import FakeTransport
+
+WAITING = "Resposta recebida; aguardando tarefas em segundo plano: "
 
 
 def result(text="", *, turns=1, error=False):
@@ -90,8 +95,10 @@ def replay_cli(tmp_path: Path, records, *, exit_code=0, wait=False):
 @pytest.mark.anyio
 @pytest.mark.parametrize("managed", [False, True])
 async def test_resume_and_background_turns_deliver_latest_result_and_progress(
-    tmp_path, managed
+    tmp_path, monkeypatch, managed
 ):
+    # A Claude session launched by Takopi passes its own ceiling to child shells.
+    monkeypatch.delenv("CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS", raising=False)
     records = [
         INIT,
         result(turns=0),
@@ -157,7 +164,22 @@ async def test_resume_and_background_turns_deliver_latest_result_and_progress(
     assert tracker.telemetry.context_tokens == 295791
     assert tracker.telemetry.context_window == 1000000
     assert tracker.telemetry.five_hour.used_percent == pytest.approx(53)
-    assert (tmp_path / "ceiling").read_text() == "0"
+    assert (tmp_path / "ceiling").read_text() == "3600000"
+    # One note per answered turn, kept as a single progress line.
+    waits = [
+        e.action.title
+        for e in events
+        if isinstance(e, ActionEvent) and e.action.id == "claude.background_wait"
+    ]
+    assert waits == [
+        f"{WAITING}Retomei o agente auxiliar.",
+        f"{WAITING}Implementação e testes concluídos.",
+    ]
+    assert [
+        a.action.title
+        for a in tracker.snapshot().actions
+        if a.action.id == "claude.background_wait"
+    ] == waits[-1:]
 
 
 @pytest.mark.anyio
@@ -172,6 +194,40 @@ async def test_late_error_is_not_hidden_by_earlier_success(tmp_path):
     assert isinstance(completed, CompletedEvent)
     assert not completed.ok
     assert completed.error == "Usage limit reached"
+    assert completed.answer == "Aguardando agente."
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("records", "body"),
+    [
+        ([INIT, result("Usage limit reached", error=True)], "Usage limit reached"),
+        (
+            [
+                INIT,
+                result("Aguardando agente."),
+                result("Usage limit reached", error=True),
+            ],
+            "Aguardando agente.\n\nUsage limit reached",
+        ),
+    ],
+    ids=["no-answer", "after-answer"],
+)
+async def test_final_message_shows_error_once(tmp_path, records, body):
+    executable = replay_cli(tmp_path, records, exit_code=1)
+    transport = FakeTransport()
+    cfg = ExecBridgeConfig(
+        transport=transport, presenter=MarkdownPresenter(), final_notify=True
+    )
+    await handle_message(
+        cfg,
+        runner=ClaudeRunner(claude_cmd=str(executable)),
+        incoming=IncomingMessage(channel_id=1, message_id=1, text="go"),
+        resume_token=None,
+    )
+    final = transport.send_calls[-1]["message"].text
+    assert final.count("Usage limit reached") == 1
+    assert f"\n\n{body}\n\n" in final
 
 
 @pytest.mark.anyio
@@ -182,6 +238,15 @@ async def test_empty_result_reports_missing_answer(tmp_path, turns):
     completed = events[-1]
     assert isinstance(completed, CompletedEvent)
     assert not completed.ok and completed.error
+
+
+@pytest.mark.anyio
+async def test_empty_result_after_answer_keeps_that_answer(tmp_path):
+    executable = replay_cli(tmp_path, [INIT, result("Aguardando agente."), result()])
+    events = [e async for e in ClaudeRunner(claude_cmd=str(executable)).run("go", None)]
+    completed = events[-1]
+    assert isinstance(completed, CompletedEvent)
+    assert completed.ok and completed.answer == "Aguardando agente."
 
 
 @pytest.mark.anyio
@@ -206,22 +271,64 @@ async def test_fallback_uses_main_assistant_not_subagent_text(tmp_path):
 
 @pytest.mark.anyio
 async def test_background_wait_remains_cancellable(tmp_path):
-    executable = replay_cli(tmp_path, [INIT, result("Aguardando agente.")], wait=True)
-    runner = ClaudeRunner(claude_cmd=str(executable))
-    events = []
+    records = [
+        INIT,
+        result("Aguardando agente."),
+        # More background actions than the five-line progress window holds.
+        *(
+            assistant(
+                [
+                    {
+                        "type": "tool_use",
+                        "id": f"t{i}",
+                        "name": "Bash",
+                        "input": {"command": "x"},
+                    }
+                ]
+            )
+            for i in range(6)
+        ),
+    ]
+    executable = replay_cli(tmp_path, records, wait=True)
+    transport = FakeTransport()
+    cfg = ExecBridgeConfig(
+        transport=transport, presenter=MarkdownPresenter(), final_notify=True
+    )
+    running_tasks = {}
+    note = f"{WAITING}Aguardando agente."
 
-    async def consume():
-        async for event in runner.run("go", None):
-            events.append(event)  # noqa: PERF401 - observe events before cancellation
+    def shown():
+        return [call["message"].text for call in transport.edit_calls]
+
+    async def run_handle_message():
+        await handle_message(
+            cfg,
+            runner=ClaudeRunner(claude_cmd=str(executable)),
+            incoming=IncomingMessage(channel_id=1, message_id=1, text="go"),
+            resume_token=None,
+            running_tasks=running_tasks,
+        )
 
     with anyio.fail_after(5):
         async with anyio.create_task_group() as group:
-            group.start_soon(consume)
-            while not (tmp_path / "ready").exists():
+            group.start_soon(run_handle_message)
+            # Claude is idle and the bridge has shown the note and all six tools.
+            while not (
+                (tmp_path / "ready").exists()
+                and any("step 7" in text for text in shown())
+            ):
                 await anyio.sleep(0.01)
-            assert not any(isinstance(e, CompletedEvent) for e in events)
-            group.cancel_scope.cancel()
+            assert note in shown()[-1]  # The answer is visible while Claude waits.
+            (task,) = running_tasks.values()
+            task.cancel_requested.set()  # What /stop does for a running task.
+    assert len(transport.send_calls) == 1  # Progress only: nothing completed.
+    assert "cancelled" in shown()[-1] and note in shown()[-1]
     assert (tmp_path / "terminated").exists()
+
+
+def test_background_wait_note_truncates_long_answers():
+    note = ClaudeRunner().background_wait_event("x" * 250)
+    assert note.action.title == f"{WAITING}{'x' * 200}…"
 
 
 @pytest.mark.parametrize("billing", [False, True])

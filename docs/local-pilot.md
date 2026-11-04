@@ -5,23 +5,40 @@ sem texto no Telegram. O adapter parava de interpretar a saída no primeiro
 `result`, inclusive um resultado vazio com zero turnos que o Claude pode emitir
 ao retomar tarefas interrompidas. A correção ignora esses resultados vazios,
 acompanha progresso e telemetria até o fim do processo e entrega a última
-resposta válida. Erros posteriores continuam sendo apresentados.
+resposta válida. Erros posteriores continuam sendo apresentados, junto com essa
+resposta em vez de substituí-la.
 
-O processo do Claude agora recebe `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` quando
-a variável não foi explicitamente configurada. Isso remove o corte padrão de
-dez minutos de espera por agentes auxiliares no modo `-p`. Uma tarefa longa
-pode continuar consumindo cota enquanto trabalha; `/stop` continua disponível.
-A mudança vale para as execuções do Takopi e requer reinício do bot.
+O processo do Claude agora recebe `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=3600000`
+quando a variável não foi explicitamente configurada. Isso amplia de dez para 60
+minutos ociosos a espera por agentes auxiliares no modo `-p`. O valor `0` não é
+usado porque espera sem limite: um shell ou monitor em segundo plano que nunca
+termina manteria a execução aberta, a sessão bloqueada e o consumo de cota. Uma
+tarefa longa pode continuar consumindo cota enquanto trabalha; a mensagem de
+progresso mostra o início da resposta já recebida, que continua visível após
+`/stop`. A mudança vale para as execuções do Takopi e requer reinício do bot.
 
 Referências: [comportamento no modo headless](https://code.claude.com/docs/en/headless#background-tasks-at-exit)
 e [resultado vazio na retomada](https://github.com/anthropics/claude-agent-sdk-python/issues/1463).
 
-Validação: **681 testes passaram**, cobertura **82,41%**; Ruff aprovado e Ty
+Validação em 04/11/2026: **762 testes passaram**, cobertura **83,12%**; Ruff aprovado e Ty
 sem erros, mantendo cinco avisos preexistentes. Os testes reproduziram a falha
 antes da correção e cobrem múltiplos resultados, progresso após resultado
 intermediário, cotas, erro posterior, finalização do launcher e cancelamento.
 São testes com subprocessos simulados, sem chamadas ao Claude ou retomada da
 sessão de trabalho do llamp.
+
+# Consulta das cotas
+
+`/cotas` e `/quota` mostram as cotas de 5h e semanais de Claude, Codex e Agy,
+com disponibilidade e idade dos dados. Claude e Agy usam o último registro
+recebido pelo bot; Codex também lê seus registros locais. A consulta não
+inicia uma chamada de modelo. A implementação preserva os dados entre
+reinícios e cobre limites, renovação, falhas de gravação, arquivos inválidos,
+cancelamento e indisponibilidade parcial dos grupos do Agy.
+
+Os testes de integração usam Telegram e CLIs simulados. A instalação foi
+verificada sem conflito de projetos com os nomes reservados `cotas` e `quota`.
+Detalhes em [telegram-status.md](telegram-status.md).
 
 # Anexos com legenda
 

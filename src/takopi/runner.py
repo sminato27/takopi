@@ -231,6 +231,26 @@ class JsonlSubprocessRunner(BaseRunner):
             level="info" if ok else "warning",
         )
 
+    def background_wait_event(self, answer: str) -> ActionEvent:
+        # Cancelling discards a buffered result, so show its start meanwhile.
+        # The fixed id lets each later result replace this progress line, and
+        # pinning keeps it visible while later actions fill the progress window.
+        excerpt = " ".join(answer.split())
+        if len(excerpt) > 200:
+            excerpt = f"{excerpt[:200].rstrip()}…"
+        title = f"Resposta recebida; aguardando tarefas em segundo plano: {excerpt}"
+        return ActionEvent(
+            engine=self.engine,
+            action=Action(
+                id=f"{self.tag()}.background_wait",
+                kind="note",
+                title=title,
+                detail={"pinned": True},
+            ),
+            phase="completed",
+            ok=True,
+        )
+
     def invalid_json_events(
         self,
         *,
@@ -564,14 +584,30 @@ class JsonlSubprocessRunner(BaseRunner):
         output: list[TakopiEvent] = []
         for evt in events:
             if isinstance(evt, StartedEvent):
-                stream.found_session, emit = self._process_started_event(
-                    evt,
-                    expected_session=stream.expected_session,
-                    found_session=stream.found_session,
-                    logger=logger,
-                    pid=pid,
-                    jsonl_seq=seq,
-                )
+                try:
+                    stream.found_session, emit = self._process_started_event(
+                        evt,
+                        expected_session=stream.expected_session,
+                        found_session=stream.found_session,
+                        logger=logger,
+                        pid=pid,
+                        jsonl_seq=seq,
+                    )
+                except RuntimeError as exc:
+                    # Background turns run after a result: a stray session id
+                    # there must not fail a run that already has an answer.
+                    if not (
+                        stream.did_emit_completed and self.allow_intermediate_results
+                    ):
+                        raise
+                    logger.warning(
+                        "runner.started.ignored_after_completed",
+                        pid=pid,
+                        jsonl_seq=seq,
+                        resume=evt.resume.value,
+                        error=str(exc),
+                    )
+                    continue
                 if not emit:
                     continue
             if isinstance(evt, CompletedEvent):
@@ -684,6 +720,12 @@ class JsonlSubprocessRunner(BaseRunner):
                         evt, CompletedEvent
                     ):
                         pending_completed = evt
+                        if (
+                            self.allow_intermediate_results
+                            and evt.ok
+                            and evt.answer.strip()
+                        ):
+                            yield self.background_wait_event(evt.answer)
                         continue
                     yield evt
 

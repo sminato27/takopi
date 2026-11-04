@@ -52,6 +52,8 @@ class Telemetry:
     five_hour: Quota | None = None
     weekly: Quota | None = None
     quota_group: str | None = None
+    # The provider's own verdict; None when it reported none.
+    limited: bool | None = None
 
 
 def telemetry_event(engine: str, status: Telemetry) -> ActionEvent:
@@ -80,22 +82,23 @@ def _tokens(value: int) -> str:
     return str(value)
 
 
-def _quota(label: str, quota: Quota | None, now: float) -> str:
+def duration(seconds: float) -> str:
+    minutes = max(1, math.ceil(seconds / 60))
+    if minutes >= 1440:
+        return f"{minutes // 1440}d {(minutes % 1440) // 60}h"
+    if minutes >= 60:
+        return f"{minutes // 60}h {minutes % 60}min"
+    return f"{minutes}min"
+
+
+def quota_line(label: str, quota: Quota | None, now: float) -> str:
     if quota is None:
         return f"{label}: indisponível"
     if quota.resets_at is not None and quota.resets_at <= now:
         return f"{label}: aguardando atualização"
     result = f"{label}: {quota.used_percent:.0f}% usado"
     if quota.resets_at is not None:
-        seconds = quota.resets_at - now
-        minutes = max(1, math.ceil(seconds / 60))
-        if minutes >= 1440:
-            reset = f"{minutes // 1440}d {(minutes % 1440) // 60}h"
-        elif minutes >= 60:
-            reset = f"{minutes // 60}h {minutes % 60}min"
-        else:
-            reset = f"{minutes}min"
-        result += f" · renova em {reset}"
+        result += f" · renova em {duration(quota.resets_at - now)}"
     return result
 
 
@@ -115,8 +118,8 @@ def telemetry_lines(status: Telemetry, *, now: float | None = None) -> list[str]
             context += f" · última chamada: {_tokens(status.last_call_tokens)} tokens"
     lines.append(f"Contexto: {context}")
     group = f" ({_text(status.quota_group)})" if status.quota_group else ""
-    lines.append(f"Cotas{group} · {_quota('5h', status.five_hour, now)}")
-    lines.append(_quota("Semanal", status.weekly, now))
+    lines.append(f"Cotas{group} · {quota_line('5h', status.five_hour, now)}")
+    lines.append(quota_line("Semanal", status.weekly, now))
     return lines
 
 

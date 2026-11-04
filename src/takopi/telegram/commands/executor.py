@@ -391,6 +391,7 @@ class _TelegramCommandExecutor(CommandExecutor):
                 transport=capture,
                 presenter=self._exec_cfg.presenter,
                 final_notify=False,
+                quota_store=self._exec_cfg.quota_store,
             )
             await _run_engine(
                 exec_cfg=exec_cfg,

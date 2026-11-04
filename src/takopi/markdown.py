@@ -254,7 +254,11 @@ class MarkdownFormatter:
 
     def _format_actions(self, state: ProgressState) -> list[str]:
         actions = list(state.actions)
-        actions = [] if self.max_actions == 0 else actions[-self.max_actions :]
+        # Pinned actions, such as an answer kept during background work, stay
+        # above the latest ones instead of scrolling out of the window.
+        pinned = [a for a in actions if a.action.detail.get("pinned")]
+        rest = [a for a in actions if not a.action.detail.get("pinned")]
+        actions = [] if self.max_actions == 0 else pinned + rest[-self.max_actions :]
         return [
             format_action_line(
                 action_state.action,

@@ -13,6 +13,7 @@ from .presenter import Presenter
 from .markdown import render_event_cli
 from .runner import Runner, RunnerTurnControl
 from .progress import ProgressTracker
+from .quota_status import QuotaStore
 from .transport import (
     ChannelId,
     MessageId,
@@ -85,6 +86,7 @@ class ExecBridgeConfig:
     transport: Transport
     presenter: Presenter
     final_notify: bool
+    quota_store: QuotaStore | None = None
 
 
 @dataclass(slots=True)
@@ -507,6 +509,20 @@ async def handle_message(
             edits_scope.cancel()
 
     elapsed = clock() - started_at
+
+    # Keep the latest quotas for /cotas. A cancelled or crashed run still
+    # reports its windows, but its result says nothing about the limit.
+    if cfg.quota_store is not None and progress_tracker.telemetry is not None:
+        try:
+            cfg.quota_store.observe(
+                engine=runner.engine,
+                telemetry=progress_tracker.telemetry,
+                completed=outcome.completed
+                if error is None and not outcome.cancelled
+                else None,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("quota.record_failed", error_type=exc.__class__.__name__)
 
     if error is not None:
         sync_resume_token(progress_tracker, outcome.resume)

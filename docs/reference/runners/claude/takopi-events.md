@@ -137,20 +137,30 @@ The terminal event looks like:
 **Mapping:** emit a single Takopi `completed` event:
 
 - `ok = !event.is_error`
-- `answer = event.result` (fallback to last assistant text if empty)
+- `answer = event.result` (if empty: last main-assistant text, then the latest
+  successful answer)
 - `error = event.error` (if present)
 - `resume = ResumeToken(engine="claude", value=event.session_id)`
 - `usage = event.usage` (pass through)
 - Keep reading after intermediate results while background work runs. Emit
   exactly one `completed` event at subprocess exit with the latest substantive
   result, after all progress and telemetry events.
+- Each buffered successful result also emits a completed `note` action with the
+  fixed id `claude.background_wait` and the first 200 characters of its answer.
+  It is pinned (`detail.pinned`) above the last five progress actions, so
+  cancelling during background work still shows that answer.
+- An `is_error` result stays `ok=False` with its own `error`; its `answer` is the
+  latest successful answer, or empty, never the error text again.
 - Ignore empty successful zero-turn results without structured output: Claude
   can emit these for interrupted background tasks when resuming, before it
-  processes the new prompt. A fallback answer uses only main-assistant text.
+  processes the new prompt. A fallback answer uses main-assistant text, then
+  the latest successful answer.
   Missing answers produce an explanatory error, not an empty successful result.
 - No idle-timeout completion is used. The child environment defaults
-  `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` to keep Claude from stopping background
-  agents after ten idle minutes; explicit operator values are preserved.
+  `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=3600000`, so Claude stops background
+  agents after 60 idle minutes instead of ten. `0` would never stop them and
+  could hold the session open indefinitely; explicit operator values are
+  preserved.
 
 #### Permission denials
 `result.permission_denials` may contain tool calls that were blocked. Emit a

@@ -33,6 +33,11 @@ def build_bot_commands(
             continue
         commands.append({"command": cmd, "description": f"use engine: {cmd}"})
         seen.add(cmd)
+    # Ahead of project aliases, so the command cap cannot drop it.
+    commands.append(
+        {"command": "cotas", "description": "ver cotas de 5h e semanal dos agentes"}
+    )
+    seen.add("cotas")
     for alias in runtime.project_aliases():
         cmd = alias.lower()
         if cmd in seen:

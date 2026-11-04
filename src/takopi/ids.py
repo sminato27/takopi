@@ -22,6 +22,8 @@ RESERVED_CHAT_COMMANDS = frozenset(
         "trigger",
         "topic",
         "ctx",
+        "cotas",
+        "quota",
     }
 )
 RESERVED_ENGINE_IDS = RESERVED_CLI_COMMANDS | RESERVED_CHAT_COMMANDS

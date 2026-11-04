@@ -61,6 +61,7 @@ from .commands.handlers import (
 from .commands.parse import is_cancel_command
 from .commands.reply import make_reply
 from .commands.help import handle_help
+from .commands.quota import show_quotas
 from .commands.sessions import (
     CALLBACK_PREFIX,
     list_sessions,
@@ -219,6 +220,9 @@ def _dispatch_builtin_command(
         return True
     if command_id == "projects":
         task_group.start_soon(show_projects, cfg, msg)
+        return True
+    if command_id in {"cotas", "quota"}:
+        task_group.start_soon(show_quotas, cfg, msg)
         return True
     if command_id == "sessions" and topic_store is not None:
         task_group.start_soon(list_sessions, cfg, msg, args_text, topic_store)

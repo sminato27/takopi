@@ -8,6 +8,7 @@ import anyio
 
 from ..backends import EngineBackend
 from ..logging import get_logger
+from ..quota_status import QuotaStore, resolve_quota_path
 from ..runner_bridge import ExecBridgeConfig
 from ..settings import TelegramTopicsSettings, TelegramTransportSettings
 from ..transport_runtime import TransportRuntime
@@ -126,6 +127,7 @@ class TelegramBackend(TransportBackend):
             transport=transport,
             presenter=presenter,
             final_notify=final_notify,
+            quota_store=QuotaStore(resolve_quota_path(config_path)),
         )
         cfg = TelegramBridgeConfig(
             bot=bot,

@@ -250,7 +250,7 @@ This mirrors CodexRunner’s “started → completed” item tracking and rende
 * Buffer each substantive `result` message until the subprocess exits:
 
   * `ok = (is_error == false)` (treat `is_error` as authoritative; `subtype` is informational)
-  * `answer = result` on success; on error, a concise message using `errors` and/or denials
+  * `answer = result` on success; on error, a concise message using `errors` and/or denials goes in `error`, and `answer` keeps only the latest successful answer (empty if none)
   * `usage` attach:
 
     * `total_cost_usd`, `usage`, `modelUsage`, `duration_ms`, `duration_api_ms`, `num_turns` ([Claude Code][3])
@@ -258,11 +258,18 @@ This mirrors CodexRunner’s “started → completed” item tracking and rende
 * Continue parsing progress, telemetry and results after intermediate results:
   background work can start more turns in the same process. Emit exactly one
   completed event at process exit, using the latest substantive result.
+* While a successful result is buffered, emit a completed `note` action
+  `claude.background_wait` with the start of its answer. Later results update
+  it in place, and `detail.pinned` keeps it above the progress window of the
+  last five actions, so a cancelled run still shows the answer already produced.
+* A later `is_error` result keeps `ok = false` and its error, but carries the
+  latest successful answer instead of erasing it.
 * Ignore empty successful results with zero turns and no structured output.
   On resume these can describe an old background task before the incoming
   prompt has run ([upstream report](https://github.com/anthropics/claude-agent-sdk-python/issues/1463)).
 * An empty final result falls back to the main assistant's latest text, never
-  a subagent's text. If neither is available, return an explanatory error.
+  a subagent's text, then to the latest successful answer. If none is
+  available, return an explanatory error.
 * We do not use an idle-timeout completion; completion is driven by Claude’s
   `result` event or process exit handling.
 
@@ -302,13 +309,16 @@ Reuse the existing subprocess lifecycle pattern (like `CodexRunner.manage_subpro
 * Drain stderr concurrently (log-only)
 * Ensure locks release in `finally`
 
-The runner defaults `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS` to `0` in its child
-environment, preserving an explicitly configured value. Claude's default
-headless mode stops remaining background agents after ten idle minutes;
-`0` waits for them to finish ([official reference](https://code.claude.com/docs/en/env-vars#variables)).
-This changes only launches through Takopi, not global Claude settings. The run
-can therefore stay open for long background work; `/stop` or cancellation still
-terminates its process group. No automatic model retry is added.
+The runner defaults `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS` to `3600000` (60
+minutes) in its child environment, preserving an explicitly configured value.
+Claude's default headless mode stops remaining background agents after ten idle
+minutes ([official reference](https://code.claude.com/docs/en/env-vars#variables));
+Takopi raises that to 60. `0` is not used: it waits without limit, so a
+background shell or monitor that never ends would keep the run open, hold its
+session lock and keep spending quota. This changes only launches through Takopi,
+not global Claude settings. The run can therefore stay open for long background
+work; `/stop` or cancellation still terminates its process group. No automatic
+model retry is added.
 
 ## Documentation updates
 

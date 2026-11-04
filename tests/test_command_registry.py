@@ -45,3 +45,9 @@ def test_command_registry_unknown(command_entrypoints) -> None:
 
 def test_command_registry_optional_missing(command_entrypoints) -> None:
     assert commands.get_command("nope", required=False) is None
+
+
+@pytest.mark.parametrize("command_id", ["cotas", "quota", "COTAS"])
+def test_command_registry_reserves_quota_commands(command_id) -> None:
+    with pytest.raises(ConfigError, match="reserved"):
+        commands.get_command(command_id)

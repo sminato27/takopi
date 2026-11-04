@@ -1,5 +1,6 @@
 import re
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -413,3 +414,87 @@ async def test_jsonl_run_impl_branches(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = _BranchingJsonlRunner()
     events = [evt async for evt in runner.run_impl("hello", None)]
     assert any(isinstance(evt, CompletedEvent) for evt in events)
+
+
+class _RecordingLogger:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def __getattr__(self, level: str) -> Any:
+        def record(event: str, **fields: Any) -> None:
+            self.calls.append((level, event, fields))
+
+        return record
+
+
+class _LateStartedJsonlRunner(_RunJsonlRunner):
+    defer_completion = True
+    allow_intermediate_results = True
+
+    def __init__(self, *lines: bytes) -> None:
+        self.lines = lines
+        self.logger = _RecordingLogger()
+
+    async def iter_json_lines(self, stream: Any) -> AsyncIterator[bytes]:
+        _ = stream
+        for line in self.lines:
+            yield line
+
+
+@pytest.fixture
+def fake_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FakeProc:
+        stdout = object()
+        stderr = object()
+        stdin = None
+        pid = 789
+
+        async def wait(self) -> int:
+            return 0
+
+    @asynccontextmanager
+    async def fake_manage_subprocess(
+        *args: Any, **kwargs: Any
+    ) -> AsyncIterator[_FakeProc]:
+        _ = args, kwargs
+        yield _FakeProc()
+
+    async def fake_drain_stderr(*args: Any, **kwargs: Any) -> None:
+        _ = args, kwargs
+
+    monkeypatch.setattr(runner_module, "manage_subprocess", fake_manage_subprocess)
+    monkeypatch.setattr(runner_module, "drain_stderr", fake_drain_stderr)
+
+
+STARTED = b'{"type": "started", "resume": "sid"}'
+OTHER_STARTED = b'{"type": "started", "resume": "other"}'
+COMPLETED = b'{"type": "completed", "resume": "sid"}'
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("fake_subprocess")
+async def test_jsonl_session_mismatch_after_result_is_logged_and_skipped() -> None:
+    runner = _LateStartedJsonlRunner(STARTED, COMPLETED, OTHER_STARTED, COMPLETED)
+    events = [evt async for evt in runner.run_impl("hello", None)]
+    # Both results were read: the stray session id did not stop the stream.
+    assert [type(evt) for evt in events] == [
+        StartedEvent,
+        ActionEvent,
+        ActionEvent,
+        CompletedEvent,
+    ]
+    completed = events[-1]
+    assert isinstance(completed, CompletedEvent)
+    assert completed.resume == ResumeToken(engine=runner.engine, value="sid")
+    warnings = [call for call in runner.logger.calls if call[0] == "warning"]
+    assert [(event, fields["resume"]) for _, event, fields in warnings] == [
+        ("runner.started.ignored_after_completed", "other")
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.usefixtures("fake_subprocess")
+async def test_jsonl_session_mismatch_before_result_still_fails() -> None:
+    runner = _LateStartedJsonlRunner(STARTED, OTHER_STARTED, COMPLETED)
+    with pytest.RaisesGroup(pytest.RaisesExc(RuntimeError, match="but expected sid")):
+        _ = [evt async for evt in runner.run_impl("hello", None)]
