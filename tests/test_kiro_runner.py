@@ -122,6 +122,26 @@ def test_registration_resume_and_overrides():
     )
 
 
+def test_claude_pipeline_agent_auto_selected_for_anthropic_models():
+    # No agent configured: an Anthropic model gets the ported subagent pipeline.
+    args = KiroRunner(model="claude-opus-5.5").build_args("text", None, state=None)
+    assert args[args.index("--agent") + 1] == "claude-pipeline"
+
+    # A non-Claude model keeps Kiro's own default agent (no --agent injected).
+    args = KiroRunner(model="gpt-5.6-sol").build_args("text", None, state=None)
+    assert "--agent" not in args
+
+    # An explicitly configured agent always wins, regardless of model.
+    runner = KiroRunner(model="claude-opus-5.5", agent="custom")
+    args = runner.build_args("text", None, state=None)
+    assert args[args.index("--agent") + 1] == "custom"
+
+    # The /model override from Telegram is also checked, not just the static config.
+    with apply_run_options(EngineRunOptions(model="claude-sonnet-5.5")):
+        args = KiroRunner().build_args("text", None, state=None)
+    assert args[args.index("--agent") + 1] == "claude-pipeline"
+
+
 @pytest.mark.parametrize(
     "config",
     [

@@ -95,11 +95,18 @@ class KiroRunner(ResumeTokenMixin, JsonlSubprocessRunner):
             args.extend(["--resume-id", resume.value])
         if self.trust_all_tools:
             args.append("--trust-all-tools")
-        if self.agent:
-            args.extend(["--agent", self.agent])
         options = get_run_options()
         model = (options.model if options else None) or self.model
         effort = (options.reasoning if options else None) or self.effort
+        agent = self.agent
+        if agent is None and model is not None and model.startswith("claude"):
+            # No agent configured: an Anthropic model gets the ported Claude
+            # Code subagent pipeline (search/grep/docs/.../consultant) and its
+            # efficiency rules, registered globally as ~/.kiro/agents/claude-pipeline.json.
+            # A non-Claude model keeps Kiro's own default agent.
+            agent = "claude-pipeline"
+        if agent:
+            args.extend(["--agent", agent])
         if model:
             args.extend(["--model", model])
         if effort:
