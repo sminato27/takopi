@@ -41,6 +41,7 @@ from .commands.handlers import (
     handle_agent_command,
     handle_chat_ctx_command,
     handle_chat_new_command,
+    handle_clear_command,
     handle_ctx_command,
     handle_file_command,
     handle_file_put_default,
@@ -283,6 +284,15 @@ def _dispatch_builtin_command(
                 msg,
                 topic_store,
                 args_text=args_text,
+                resolved_scope=resolved_scope,
+                scope_chat_ids=scope_chat_ids,
+            )
+        elif command_id == "clear":
+            handler = partial(
+                handle_clear_command,
+                cfg,
+                msg,
+                topic_store,
                 resolved_scope=resolved_scope,
                 scope_chat_ids=scope_chat_ids,
             )
@@ -1732,6 +1742,43 @@ async def run_main_loop(
                         tg.start_soon(
                             partial(
                                 handle_new_command,
+                                cfg,
+                                msg,
+                                state.topic_store,
+                                resolved_scope=state.resolved_topics_scope,
+                                scope_chat_ids=state.topics_chat_ids,
+                            )
+                        )
+                        return
+                if command_id == "clear":
+                    # Unlike /new, /clear never opens a topic: it resets the
+                    # session in place, regardless of topics.session_topics.
+                    forward_coalescer.cancel(forward_key)
+                    if state.topic_store is not None and topic_key is not None:
+                        tg.start_soon(
+                            partial(
+                                handle_clear_command,
+                                cfg,
+                                msg,
+                                state.topic_store,
+                                resolved_scope=state.resolved_topics_scope,
+                                scope_chat_ids=state.topics_chat_ids,
+                            )
+                        )
+                        return
+                    if state.chat_session_store is not None:
+                        tg.start_soon(
+                            handle_chat_new_command,
+                            cfg,
+                            msg,
+                            state.chat_session_store,
+                            chat_session_key,
+                        )
+                        return
+                    if state.topic_store is not None:
+                        tg.start_soon(
+                            partial(
+                                handle_clear_command,
                                 cfg,
                                 msg,
                                 state.topic_store,

@@ -218,20 +218,14 @@ async def _handle_chat_ctx_command(
     )
 
 
-async def _handle_new_command(
+async def _clear_topic_sessions(
     cfg: TelegramBridgeConfig,
     msg: TelegramIncomingMessage,
     store: TopicStateStore,
     *,
-    args_text: str = "",
-    resolved_scope: str | None = None,
-    scope_chat_ids: frozenset[int] | None = None,
+    resolved_scope: str | None,
+    scope_chat_ids: frozenset[int] | None,
 ) -> None:
-    if cfg.topics.session_topics:
-        from .sessions import create_session
-
-        await create_session(cfg, msg, args_text, store)
-        return
     reply = make_reply(cfg, msg)
     error = _topics_command_error(
         cfg,
@@ -248,6 +242,48 @@ async def _handle_new_command(
         return
     await store.clear_sessions(*tkey)
     await reply(text="cleared stored sessions for this topic.")
+
+
+async def _handle_new_command(
+    cfg: TelegramBridgeConfig,
+    msg: TelegramIncomingMessage,
+    store: TopicStateStore,
+    *,
+    args_text: str = "",
+    resolved_scope: str | None = None,
+    scope_chat_ids: frozenset[int] | None = None,
+) -> None:
+    if cfg.topics.session_topics:
+        from .sessions import create_session
+
+        await create_session(cfg, msg, args_text, store)
+        return
+    await _clear_topic_sessions(
+        cfg,
+        msg,
+        store,
+        resolved_scope=resolved_scope,
+        scope_chat_ids=scope_chat_ids,
+    )
+
+
+async def _handle_clear_command(
+    cfg: TelegramBridgeConfig,
+    msg: TelegramIncomingMessage,
+    store: TopicStateStore,
+    *,
+    resolved_scope: str | None = None,
+    scope_chat_ids: frozenset[int] | None = None,
+) -> None:
+    # Unlike /new, /clear always resets in place: it never opens a topic,
+    # regardless of topics.session_topics. That is the whole point of it.
+    await _clear_topic_sessions(
+        cfg,
+        msg,
+        store,
+        resolved_scope=resolved_scope,
+        scope_chat_ids=scope_chat_ids,
+    )
 
 
 async def _handle_chat_new_command(

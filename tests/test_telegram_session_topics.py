@@ -11,7 +11,7 @@ from takopi.runner_bridge import RunningTask
 from takopi.settings import TelegramTopicsSettings
 from takopi.telegram.api_models import ForumTopic
 from takopi.telegram.commands.sessions import create_session, list_sessions
-from takopi.telegram.commands.topics import _handle_new_command
+from takopi.telegram.commands.topics import _handle_clear_command, _handle_new_command
 from takopi.telegram.commands.cancel import handle_cancel
 from takopi.telegram.loop import run_main_loop
 from takopi.telegram.topic_state import TopicStateStore
@@ -106,6 +106,28 @@ async def test_new_selector_then_project_then_independent_topics(session_setup):
     assert len(bot.created) == 2
     assert (await store.get_thread(msg.chat_id, 101)).sessions == {"claude": "original"}
     assert (await store.get_thread(msg.chat_id, 102)).sessions == {}
+
+
+@pytest.mark.anyio
+async def test_clear_resets_session_in_place_even_with_session_topics(session_setup):
+    # /clear must never behave like /new here: it stays in the same topic
+    # instead of opening another one, which is the whole point of it.
+    cfg, msg, store, transport, bot = session_setup
+    await create_session(cfg, msg, "claude test revisão", store)
+    await store.set_session_resume(msg.chat_id, 101, ResumeToken("claude", "original"))
+    created_before = len(bot.created)
+
+    await _handle_clear_command(cfg, replace(msg, message_id=2, thread_id=101), store)
+
+    assert len(bot.created) == created_before
+    thread = await store.get_thread(msg.chat_id, 101)
+    assert thread.sessions == {}
+    assert thread.context.project == "test"
+    assert thread.default_engine == "claude"
+    assert (
+        "cleared stored sessions for this topic"
+        in transport.send_calls[-1]["message"].text
+    )
 
 
 @pytest.mark.anyio

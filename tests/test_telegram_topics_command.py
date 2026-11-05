@@ -11,12 +11,15 @@ from takopi.telegram.chat_prefs import ChatPrefsStore, resolve_prefs_path
 from takopi.telegram.commands.topics import (
     _handle_chat_ctx_command,
     _handle_chat_new_command,
+    _handle_clear_command,
     _handle_ctx_command,
     _handle_new_command,
     _handle_topic_command,
 )
 from takopi.telegram.topic_state import TopicStateStore
 from takopi.telegram.types import TelegramIncomingMessage
+from takopi.model import ResumeToken
+from takopi.context import RunContext
 from tests.telegram_fakes import (
     DEFAULT_ENGINE_ID,
     FakeTransport,
@@ -187,3 +190,80 @@ async def test_topic_command_requires_args(tmp_path: Path) -> None:
 
     text = transport.send_calls[-1]["message"].text
     assert "usage: /topic" in text
+
+
+@pytest.mark.anyio
+async def test_clear_command_requires_topic(tmp_path: Path) -> None:
+    transport = FakeTransport()
+    cfg = replace(
+        make_cfg(transport),
+        topics=TelegramTopicsSettings(enabled=True, scope="all"),
+    )
+    store = TopicStateStore(tmp_path / "topics.json")
+    msg = _msg("/clear")
+
+    await _handle_clear_command(
+        cfg,
+        msg,
+        store,
+        resolved_scope="all",
+        scope_chat_ids=frozenset({msg.chat_id}),
+    )
+
+    text = transport.send_calls[-1]["message"].text
+    assert "only works inside a topic" in text
+
+
+@pytest.mark.anyio
+async def test_clear_command_resets_session_but_keeps_binding(tmp_path: Path) -> None:
+    transport = FakeTransport()
+    cfg = replace(
+        make_cfg(transport),
+        topics=TelegramTopicsSettings(enabled=True, scope="all"),
+    )
+    store = TopicStateStore(tmp_path / "topics.json")
+    msg = _msg("/clear", chat_id=123, thread_id=5, chat_type="supergroup")
+
+    await store.set_context(msg.chat_id, 5, RunContext(project="alpha"))
+    await store.set_session_resume(msg.chat_id, 5, ResumeToken("codex", "native-id"))
+
+    await _handle_clear_command(
+        cfg,
+        msg,
+        store,
+        resolved_scope="all",
+        scope_chat_ids=frozenset({msg.chat_id}),
+    )
+
+    assert await store.get_session_resume(msg.chat_id, 5, "codex") is None
+    assert (await store.get_context(msg.chat_id, 5)) is not None
+    text = transport.send_calls[-1]["message"].text
+    assert "cleared stored sessions for this topic" in text
+
+
+@pytest.mark.anyio
+async def test_clear_command_does_not_create_topic_when_session_topics_enabled(
+    tmp_path: Path,
+) -> None:
+    # /clear never behaves like session-topics /new: it always resets in
+    # place, it never opens a fresh topic.
+    transport = FakeTransport()
+    cfg = replace(
+        make_cfg(transport),
+        topics=TelegramTopicsSettings(enabled=True, scope="all", session_topics=True),
+    )
+    store = TopicStateStore(tmp_path / "topics.json")
+    msg = _msg("/clear", chat_id=123, thread_id=5, chat_type="supergroup")
+    await store.set_session_resume(msg.chat_id, 5, ResumeToken("codex", "native-id"))
+
+    await _handle_clear_command(
+        cfg,
+        msg,
+        store,
+        resolved_scope="all",
+        scope_chat_ids=frozenset({msg.chat_id}),
+    )
+
+    assert await store.get_session_resume(msg.chat_id, 5, "codex") is None
+    text = transport.send_calls[-1]["message"].text
+    assert "cleared stored sessions for this topic" in text

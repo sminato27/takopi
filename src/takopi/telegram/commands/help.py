@@ -31,11 +31,15 @@ def build_help_messages(cfg: TelegramBridgeConfig) -> list[str]:
                 "/new AGENTE — escolhe o projeto e cria outro tópico.",
                 "/new AGENTE PROJETO [nome da conversa] — cria uma sessão independente, preservando as anteriores.",
                 f"Exemplo: `/new {engine} {project} revisão`. Depois, escreva sua tarefa dentro do tópico criado.",
+                "/clear — limpa a sessão deste tópico e continua nele, sem criar outro; mantém o projeto/contexto do tópico.",
             ]
         )
     else:
         lines.append(
             "/new — limpa o vínculo com a sessão atual para começar outra conversa; mantém o projeto/contexto."
+        )
+        lines.append(
+            "/clear — mesmo efeito de /new aqui: limpa a sessão, continua na mesma conversa/tópico."
         )
     lines.append("/projects — lista os projetos cadastrados e exemplos de uso.")
     if "agy" in engines:

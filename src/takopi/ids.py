@@ -16,6 +16,7 @@ RESERVED_CHAT_COMMANDS = frozenset(
         "projects",
         "file",
         "new",
+        "clear",
         "agent",
         "model",
         "reasoning",
