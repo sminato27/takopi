@@ -63,6 +63,11 @@ from .commands.parse import is_cancel_command
 from .commands.reply import make_reply
 from .commands.help import handle_help
 from .commands.quota import show_quotas
+from .commands.projects import (
+    PROJECT_CALLBACK_PREFIX,
+    ProjectDeletions,
+    handle_project_command,
+)
 from .commands.sessions import (
     CALLBACK_PREFIX,
     list_sessions,
@@ -517,6 +522,7 @@ class TelegramLoopState:
     seen_update_order: deque[int]
     seen_message_keys: set[MessageKey]
     seen_messages_order: deque[MessageKey]
+    active_runs: int = 0
 
 
 if TYPE_CHECKING:
@@ -1076,6 +1082,7 @@ async def run_main_loop(
         seen_message_keys=set(),
         seen_messages_order=deque(),
     )
+    project_deletions = ProjectDeletions()
 
     def refresh_topics_scope() -> None:
         if cfg.topics.enabled:
@@ -1277,25 +1284,31 @@ async def run_main_loop(
                     chat_prefs=state.chat_prefs,
                     topic_store=state.topic_store,
                 )
-                await run_engine(
-                    exec_cfg=cfg.exec_cfg,
-                    runtime=cfg.runtime,
-                    running_tasks=state.running_tasks,
-                    chat_id=chat_id,
-                    user_msg_id=user_msg_id,
-                    text=text,
-                    resume_token=resume_token,
-                    context=context,
-                    reply_ref=reply_ref,
-                    on_thread_known=wrap_on_thread_known(
-                        on_thread_known, topic_key, chat_session_key
-                    ),
-                    engine_override=engine_override,
-                    thread_id=thread_id,
-                    show_resume_line=show_resume_line,
-                    progress_ref=progress_ref,
-                    run_options=run_options,
-                )
+                # A run already uses its directory while Telegram is sending
+                # the initial progress message, before running_tasks is filled.
+                state.active_runs += 1
+                try:
+                    await run_engine(
+                        exec_cfg=cfg.exec_cfg,
+                        runtime=cfg.runtime,
+                        running_tasks=state.running_tasks,
+                        chat_id=chat_id,
+                        user_msg_id=user_msg_id,
+                        text=text,
+                        resume_token=resume_token,
+                        context=context,
+                        reply_ref=reply_ref,
+                        on_thread_known=wrap_on_thread_known(
+                            on_thread_known, topic_key, chat_session_key
+                        ),
+                        engine_override=engine_override,
+                        thread_id=thread_id,
+                        show_resume_line=show_resume_line,
+                        progress_ref=progress_ref,
+                        run_options=run_options,
+                    )
+                finally:
+                    state.active_runs -= 1
 
             async def run_thread_job(job: ThreadJob) -> None:
                 await run_job(
@@ -1787,6 +1800,20 @@ async def run_main_loop(
                             )
                         )
                         return
+                if command_id in {"project_new", "project_delete"}:
+                    changed = await handle_project_command(
+                        cfg,
+                        msg,
+                        command_id,
+                        args_text,
+                        reserved=state.command_ids,
+                        deletions=project_deletions,
+                    )
+                    if changed:
+                        refresh_commands()
+                        refresh_topics_scope()
+                        await set_command_menu(cfg)
+                    return
                 if command_id is not None and _dispatch_builtin_command(
                     ctx=TelegramCommandContext(
                         cfg=cfg,
@@ -1987,6 +2014,26 @@ async def run_main_loop(
                         oldest = state.seen_messages_order.popleft()
                         state.seen_message_keys.discard(oldest)
                 if isinstance(update, TelegramCallbackQuery):
+                    if update.data and update.data.startswith(PROJECT_CALLBACK_PREFIX):
+                        await cfg.bot.answer_callback_query(update.callback_query_id)
+                        if update.chat_id in _allowed_chat_ids(cfg):
+                            changed = await project_deletions.handle_callback(
+                                cfg,
+                                _callback_message(update),
+                                update.data,
+                                is_busy=lambda: bool(
+                                    state.active_runs
+                                    or state.running_tasks
+                                    or state.pending_prompts
+                                    or state.media_groups
+                                    or scheduler.has_work
+                                ),
+                            )
+                            if changed:
+                                refresh_commands()
+                                refresh_topics_scope()
+                                await set_command_menu(cfg)
+                        return
                     if update.data and update.data.startswith(CALLBACK_PREFIX):
                         await cfg.bot.answer_callback_query(update.callback_query_id)
                         if (

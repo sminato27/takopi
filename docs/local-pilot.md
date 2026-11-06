@@ -129,6 +129,8 @@ Só habilite o início automático depois de validar o piloto: `systemctl --user
 - `/new codex` ou `/new claude`: escolhe o projeto por botões.
 - `/new claude projeto nome da conversa`: cria diretamente um tópico independente.
 - `/projects`: lista os projetos cadastrados.
+- `/project_new NOME [CAMINHO]`: cria e cadastra um projeto; sem caminho, usa `~/projects/NOME`. Caminhos com espaços devem estar entre aspas. Também cadastra pastas existentes, sem alterar seus arquivos.
+- `/project_delete [PROJETO]`: sem nome, oferece os projetos por botões. Depois mostra a pasta e pergunta se deseja excluir apenas do Takopi/bot ou também apagar os arquivos locais. A exclusão dos arquivos exige uma segunda confirmação e pode ser cancelada; tópicos e históricos do bot são preservados. `/project_delete PROJETO confirmar` continua removendo apenas o cadastro. A lista e o menu são atualizados sem reinício. Ambos os comandos exigem o usuário autorizado configurado. Veja as proteções e a recuperação de falhas em [Projects](how-to/projects.md).
 - `/sessions`, `/sessions codex` ou `/sessions claude`: lista as conversas do bot com links e os históricos locais ainda sem tópico. Use `/sessions all 2` para a página seguinte.
 - `/resume codex ID` ou `/resume claude ID`: abre um histórico local no seu projeto, em um tópico. Copie o comando mostrado por `/sessions`. Se já existe um tópico para o ID, retorna seu link. A primeira mensagem no tópico retoma o CLI através do ai-memory; listar e abrir um tópico não executa uma tarefa de modelo.
 - Escreva no tópico para iniciar/retomar a conversa. A primeira mensagem inicia o CLI; criar um tópico não consome uma chamada de modelo.

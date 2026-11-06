@@ -35,6 +35,9 @@ This line is parsed from replies and takes precedence over new directives.
 | Command | Description |
 |---------|-------------|
 | `/help` | Show the Portuguese command guide, examples, and current engine/project shortcuts. Replies in the same topic without starting an agent. |
+| `/projects` | List registered projects and management commands. |
+| `/project_new <name> [path]` | Create/register a project directory; defaults to `~/projects/<name>`. Requires an explicitly allowed user. |
+| `/project_delete [name]` | Choose a project, then use buttons to remove only its registration or also delete its local directory. Deleting files requires a second confirmation. Requires an explicitly allowed user. |
 | `/cancel` | Reply to the progress message to stop the current run. |
 | `/agent` | Show/set the default engine for the current scope. |
 | `/model` | Show/set the model override for the current scope. |

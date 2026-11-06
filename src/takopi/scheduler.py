@@ -50,6 +50,11 @@ class ThreadScheduler:
     def thread_key(token: ResumeToken) -> str:
         return f"{token.engine}:{token.value}"
 
+    @property
+    def has_work(self) -> bool:
+        """Whether a worker or queued job may still be using a project directory."""
+        return bool(self._active_threads or self._pending_by_thread)
+
     async def note_thread_known(self, token: ResumeToken, done: anyio.Event) -> None:
         key = self.thread_key(token)
         async with self._lock:

@@ -42,6 +42,13 @@ def build_help_messages(cfg: TelegramBridgeConfig) -> list[str]:
             "/clear — mesmo efeito de /new aqui: limpa a sessão, continua na mesma conversa/tópico."
         )
     lines.append("/projects — lista os projetos cadastrados e exemplos de uso.")
+    lines.extend(
+        [
+            "/project_new NOME [CAMINHO] — cria uma pasta e cadastra o projeto; sem caminho, usa ~/projects/NOME. Uma pasta existente é apenas cadastrada. Use aspas em caminhos com espaços.",
+            "/project_delete [PROJETO] — escolhe o projeto e oferece botões para excluir apenas do Takopi/bot ou também apagar os arquivos locais. Apagar a pasta exige uma confirmação adicional; é possível cancelar. Tópicos e históricos do bot são preservados.",
+            "Gerenciar projetos exige um usuário em allowed_user_ids. A lista e o menu são atualizados sem reinício; os comandos não executam um agente.",
+        ]
+    )
     if "agy" in engines:
         lines.append(
             "Antigravity usa o nome `agy`: `/new agy` cria uma conversa e `/sessions agy` lista seus históricos."

@@ -312,4 +312,10 @@ async def show_projects(
 ) -> None:
     lines = ["Projetos disponíveis neste WSL. Use /new AGENTE PROJETO:"]
     lines.extend(f"• {alias}" for alias in cfg.runtime.project_aliases())
+    lines.extend(
+        [
+            "\nCriar/cadastrar: /project_new NOME [CAMINHO]",
+            "Excluir (escolha manter ou apagar arquivos locais): /project_delete",
+        ]
+    )
     await make_reply(cfg, msg)(text="\n".join(lines))

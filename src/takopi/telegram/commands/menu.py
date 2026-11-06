@@ -38,6 +38,13 @@ def build_bot_commands(
         {"command": "cotas", "description": "ver cotas de 5h e semanal dos agentes"}
     )
     seen.add("cotas")
+    for cmd, description in [
+        ("projects", "listar projetos disponíveis"),
+        ("project_new", "criar ou cadastrar um projeto"),
+        ("project_delete", "excluir projeto: manter ou apagar arquivos locais"),
+    ]:
+        commands.append({"command": cmd, "description": description})
+        seen.add(cmd)
     for alias in runtime.project_aliases():
         cmd = alias.lower()
         if cmd in seen:
@@ -95,7 +102,6 @@ def build_bot_commands(
             ("topic", "create or bind a topic"),
             ("sessions", "listar sessões por agente"),
             ("resume", "abrir histórico local em um tópico"),
-            ("projects", "listar projetos disponíveis"),
             ("stop", "interromper tarefa"),
         ]:
             if cmd in seen:

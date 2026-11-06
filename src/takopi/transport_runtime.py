@@ -147,6 +147,10 @@ class TransportRuntime:
     def project_aliases(self) -> tuple[str, ...]:
         return tuple(project.alias for project in self._projects.projects.values())
 
+    def update_projects(self, projects: ProjectsConfig) -> None:
+        """Apply persisted project changes without replacing active runners."""
+        self._projects = projects
+
     @property
     def allowlist(self) -> set[str] | None:
         return self._allowlist

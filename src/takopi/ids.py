@@ -14,6 +14,8 @@ RESERVED_CHAT_COMMANDS = frozenset(
         "sessions",
         "resume",
         "projects",
+        "project_new",
+        "project_delete",
         "file",
         "new",
         "clear",
